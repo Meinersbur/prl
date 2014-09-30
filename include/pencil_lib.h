@@ -47,5 +47,11 @@
     __typeof__(max) _max_temp_ = (max); \
     (_val_temp_ < _min_temp_) ? _min_temp_ : (_val_temp_ > _max_temp_) ? _max_temp_ : _val_temp_; \
     })
+#define mix(x, y, a) ({ \
+    __typeof__(x) _x_temp_ = (x); \
+    __typeof__(y) _y_temp_ = (y); \
+    __typeof__(a) _a_temp_ = (a); \
+    _x_temp_ + (_y_temp_ - _x_temp_) * _a_temp_; \
+    })
 
 #endif
