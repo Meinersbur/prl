@@ -24,6 +24,7 @@
 #ifndef PENCIL_LIB_H
 #define PENCIL_LIB_H
 #include <math.h>
+#define M_PI 3.14159265358979323846
 inline char bmin(char a, char b) { return a <= b ? a : b; }
 inline short smin(short a, short b) { return a <= b ? a : b; }
 inline int min(int a, int b) { return a <= b ? a : b; }
@@ -50,6 +51,8 @@ inline unsigned char ubclampi(unsigned char val, unsigned char min, unsigned cha
 inline unsigned short usclampi(unsigned short val, unsigned short min, unsigned short max) { return (val < min) ? min : (val > max) ? max : val; }
 inline unsigned int uclampi(unsigned int val, unsigned int min, unsigned int max) { return (val < min) ? min : (val > max) ? max : val; }
 inline unsigned long ulclampi(unsigned long val, unsigned long min, unsigned long max) { return (val < min) ? min : (val > max) ? max : val; }
+inline float atan2pif(float x, float y) { return atan2(x,y)/M_PI; }
+inline double atan2pi(double x, double y) { return atan2(x,y)/M_PI; }
 inline float mixf(float x, float y, float a) { return x + (y-x)*a; }
 inline double mix(double x, double y, double a) { return x + (y-x)*a; }
 #endif
