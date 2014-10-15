@@ -106,6 +106,10 @@ class memory_manager
                              void *host_ptr)
     {
         cl_error_code err;
+        if (!(flags & (CL_MEM_USE_HOST_PTR | CL_MEM_COPY_HOST_PTR)))
+        {
+            host_ptr = NULL;
+        }
         cl_mem res = clCreateBuffer (ctx, flags, size, host_ptr, &err);
         OPENCL_ASSERT (err);
         assert (res);
