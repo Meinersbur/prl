@@ -23,6 +23,16 @@
  */
 #ifndef PENCIL_OPENCL_H
 #define PENCIL_OPENCL_H
+#define fabsf(x) (fabs)((float)(x))
+#define fabs(x) (fabs)((double)(x))
+#define babs(x) (abs)((char)(x))
+#define sabs(x) (abs)((short)(x))
+#define abs(x) (abs)((int)(x))
+#define labs(x) (abs)((long)(x))
+#define ubabs(x) (abs)((unsigned char)(x))
+#define usabs(x) (abs)((unsigned short)(x))
+#define uabs(x) (abs)((unsigned int)(x))
+#define ulabs(x) (abs)((unsigned long)(x))
 #define fminf(a, b) (fmin)((float)(a), (float)(b))
 #define fmin(a, b) (fmin)((double)(a), (double)(b))
 #define bmin(a, b) (min)((char)(a), (char)(b))
@@ -63,6 +73,8 @@ inline unsigned long ulclampi(unsigned long val, unsigned long min, unsigned lon
 #define atan2pi(x, y) (atan2pi)((double)(x), (double)(y))
 #define hypotf(x, y) (hypot)((float)(x), (float)(y))
 #define hypot(x, y) (hypot)((double)(x), (double)(y))
+#define sqrtf(x) (sqrt)((float)(x))
+#define sqrt(x) (sqrt)((double)(x))
 #define expf(x) (exp)((float)(x))
 #define exp(x) (exp)((double)(x))
 #define powf(x, y) (pow)((float)(x), (float)(y))

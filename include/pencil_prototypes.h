@@ -23,6 +23,16 @@
  */
 #ifndef PENCIL_PROTOTYPES_H
 #define PENCIL_PROTOTYPES_H
+float fabsf(float x);
+double fabs(double x);
+char babs(char x);
+short sabs(short x);
+int abs(int x);
+long labs(long x);
+unsigned char ubabs(unsigned char x);
+unsigned short usabs(unsigned short x);
+unsigned int uabs(unsigned int x);
+unsigned long ulabs(unsigned long x);
 float fminf(float a, float b);
 double fmin(double a, double b);
 char bmin(char a, char b);
@@ -63,6 +73,8 @@ float atan2pif(float x, float y);
 double atan2pi(double x, double y);
 float hypotf(float x, float y);
 double hypot(double x, double y);
+float sqrtf(float x);
+double sqrt(double x);
 float expf(float x);
 double exp(double x);
 float powf(float x, float y);

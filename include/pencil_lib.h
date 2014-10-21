@@ -24,7 +24,9 @@
 #ifndef PENCIL_LIB_H
 #define PENCIL_LIB_H
 #include <math.h>
+#ifndef M_PI
 #define M_PI 3.14159265358979323846
+#endif
 inline char bmin(char a, char b) { return a <= b ? a : b; }
 inline short smin(short a, short b) { return a <= b ? a : b; }
 inline int min(int a, int b) { return a <= b ? a : b; }
