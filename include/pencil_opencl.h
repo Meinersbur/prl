@@ -55,14 +55,14 @@
 #define ulmax(a, b) (max)((unsigned long)(a), (unsigned long)(b))
 #define clampf(val, min, max) (clamp)((float)(val), (float)(min), (float)(max))
 #define clamp(val, min, max) (clamp)((double)(val), (double)(min), (double)(max))
-inline char bclampi(char val, char min, char max) { return (val < min) ? min : (val > max) ? max : val; }
-inline short sclampi(short val, short min, short max) { return (val < min) ? min : (val > max) ? max : val; }
-inline int clampi(int val, int min, int max) { return (val < min) ? min : (val > max) ? max : val; }
-inline long lclampi(long val, long min, long max) { return (val < min) ? min : (val > max) ? max : val; }
-inline unsigned char ubclampi(unsigned char val, unsigned char min, unsigned char max) { return (val < min) ? min : (val > max) ? max : val; }
-inline unsigned short usclampi(unsigned short val, unsigned short min, unsigned short max) { return (val < min) ? min : (val > max) ? max : val; }
-inline unsigned int uclampi(unsigned int val, unsigned int min, unsigned int max) { return (val < min) ? min : (val > max) ? max : val; }
-inline unsigned long ulclampi(unsigned long val, unsigned long min, unsigned long max) { return (val < min) ? min : (val > max) ? max : val; }
+inline char __attribute__((const)) bclampi(char val, char min, char max) { return (val < min) ? min : ((val > max) ? max : val); }
+inline short __attribute__((const)) sclampi(short val, short min, short max) { return (val < min) ? min : ((val > max) ? max : val); }
+inline int __attribute__((const)) clampi(int val, int min, int max) { return (val < min) ? min : ((val > max) ? max : val); }
+inline long __attribute__((const)) lclampi(long val, long min, long max) { return (val < min) ? min : ((val > max) ? max : val); }
+inline unsigned char __attribute__((const)) ubclampi(unsigned char val, unsigned char min, unsigned char max) { return (val < min) ? min : ((val > max) ? max : val); }
+inline unsigned short __attribute__((const)) usclampi(unsigned short val, unsigned short min, unsigned short max) { return (val < min) ? min : ((val > max) ? max : val); }
+inline unsigned int __attribute__((const)) uclampi(unsigned int val, unsigned int min, unsigned int max) { return (val < min) ? min : ((val > max) ? max : val); }
+inline unsigned long __attribute__((const)) ulclampi(unsigned long val, unsigned long min, unsigned long max) { return (val < min) ? min : ((val > max) ? max : val); }
 #define tanf(x) (tan)((float)(x))
 #define tan(x) (tan)((double)(x))
 #define atanf(x) (atan)((float)(x))
