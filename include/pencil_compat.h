@@ -28,9 +28,11 @@
 #define __pencil_kill(loc)
 #define __pencil_use(loc)
 #define __pencil_def(loc)
-#define __pencil_maybe()
+#define __pencil_maybe() 1
 #define __pencil_assume(expr)
-#define __pencil_assert(expr)
+
+#include <assert.h>
+#define __pencil_assert(expr) assert(expr)
 
 /* Additional PENCIL types not in C99 */
 /* half */
