@@ -45,4 +45,7 @@
 /* bool */
 #include <stdbool.h>
 
+/* PENCIL built-in functions prototypes and (possible) implementations. */
+#include "pencil_lib.h"
+
 #endif

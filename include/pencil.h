@@ -52,8 +52,5 @@
 /* PENCIL to C compatibility layer. */
 #include "pencil_compat.h"
 
-/* PENCIL built-in functions prototypes and (possible) implementations. */
-#include "pencil_lib.h"
-
 #endif
 #endif
