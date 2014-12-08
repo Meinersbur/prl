@@ -25,7 +25,8 @@ AC_ARG_WITH([ocl_utilities],
 AC_CHECK_FILE(["${with_ocl_utilities}"], [], [AC_MSG_ERROR(ocl_utilities.c not found)])
 OCL_UTILITIES_C="${with_ocl_utilities}"
 AC_SUBST(OCL_UTILITIES_C)
-    
+OCL_UTILITIES_H=`dirname "${with_ocl_utilities}"`/ocl_utilities.h
+AC_SUBST(OCL_UTILITIES_H)
    
 AC_ARG_ENABLE([host-alloc],
 	[AS_HELP_STRING([--enable-host-alloc], [Allocate on host])],
@@ -38,5 +39,7 @@ AC_ARG_ENABLE([host-alloc],
 AM_CONDITIONAL(HOST_ALLOC, test "x$enabled_host_alloc" = xyes)
 
 AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([include/Makefile])
+AC_CONFIG_FILES([runtime/Makefile])
 
 AC_OUTPUT
