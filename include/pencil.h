@@ -46,6 +46,18 @@
 /* PENCIL built-in functions prototypes only. */
 #include "pencil_prototypes.h"
 
+/* Custom stdbool.h */
+#define bool _Bool
+#define true 1
+#define false 0
+#define __bool_true_false_are_defined 1
+
+/* PENCIL-specific macros */
+#define ACCESS(...) __attribute__((pencil_access(__VA_ARGS__)))
+#define USE __pencil_use
+#define DEF __pencil_def
+#define MAYBE __pencil_maybe()
+
 #else
 /* The file is processed as a C file. */
 
