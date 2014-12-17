@@ -29,8 +29,8 @@ ifeq ($(HOST_ALLOC),1)
 endif
 
 CXXFLAGS = ${CFLAGS} -std=c++11
-CC = gcc
-CXX = g++
+CC = ${ARCH}gcc
+CXX =${ARCH}g++
 
 OCL_UTIL =
 
