@@ -36,10 +36,10 @@ extern void * pencil_alloc (size_t size);
 extern void pencil_free (void * ptr);
 
 /** Initialize PENCIL runtime.  */
-extern void pencil_init ();
+extern void pencil_init (void);
 
 /** Release PENCIL runtime.  */
-extern void pencil_shutdown ();
+extern void pencil_shutdown (void);
 
 #ifdef __cplusplus
 }
