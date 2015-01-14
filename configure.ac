@@ -15,18 +15,6 @@ AM_PROG_AR
 AC_PROG_CXX
 AX_CXX_COMPILE_STDCXX_11(noext,mandatory)
 AC_PROG_LIBTOOL
-
-# Options
-AC_ARG_WITH([ocl_utilities],
-            [AS_HELP_STRING([--with-ocl_utilities], [path to ocl_utilities.c])],
-            [],
-            [AC_MSG_ERROR(--with-ocl_utilities is mandatory)])
-     
-AC_CHECK_FILE(["${with_ocl_utilities}"], [], [AC_MSG_ERROR(ocl_utilities.c not found)])
-OCL_UTILITIES_C="${with_ocl_utilities}"
-AC_SUBST(OCL_UTILITIES_C)
-OCL_UTILITIES_H=`dirname "${with_ocl_utilities}"`/ocl_utilities.h
-AC_SUBST(OCL_UTILITIES_H)
    
 AC_ARG_ENABLE([host-alloc],
 	[AS_HELP_STRING([--enable-host-alloc], [Allocate on host])],
