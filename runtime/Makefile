@@ -48,7 +48,7 @@ ocl_pencil.o: opencl/pencil_runtime.c opencl/pencil_int.h pencil_runtime.h
 ocl_utilities.o: ${OCL_UTIL}
 	${CC} -c -fpic ${CFLAGS} $< -o $@
 
-libocl_pencil_ref.so: ocl_pencil.o ocl_utilities.o
+libocl_pencil_ref.so: ocl_pencil.o
 	${CC} -shared $^ -o $@
 
 libocl_pencil_opt.so: ocl_pencil_opt.o pencil_runtime_impl.o ocl_utilities.o
