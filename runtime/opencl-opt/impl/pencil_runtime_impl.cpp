@@ -32,11 +32,16 @@
 #include <map>
 #include <iostream>
 
+extern "C"
+{
+    const char *opencl_error_string(cl_int error);
+}
+
 
 #include "impl.h"
 
 #define UNUSED(exp) (void)(exp)
-#define OPENCL_ASSERT(exp) do {if (exp != CL_SUCCESS) {std::cerr << "OpenCL error:" << exp << std::endl;} assert (exp == CL_SUCCESS);} while (0)
+#define OPENCL_ASSERT(exp) do {if (exp != CL_SUCCESS) {std::cerr << "OpenCL error: " << opencl_error_string(exp) << std::endl;} assert (exp == CL_SUCCESS);} while (0)
 
 typedef cl_int cl_error_code;
 
