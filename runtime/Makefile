@@ -28,6 +28,10 @@ ifeq ($(HOST_ALLOC),1)
 	CFLAGS += -DHOST_ALLOC=1
 endif
 
+ifeq ($(THREAD_SAFE),1)
+	CFLAGS += -DTHREAD_SAFE
+endif
+
 CXXFLAGS = ${CFLAGS} -std=c++11
 CC = ${ARCH}gcc
 CXX =${ARCH}g++
