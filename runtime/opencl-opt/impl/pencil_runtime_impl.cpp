@@ -20,12 +20,6 @@
  * THE SOFTWARE.
  */
 
-#if defined (__APPLE__)
-#include <OpenCL/opencl.h>
-#else
-#include <CL/opencl.h>
-#endif
-
 #include <cassert>
 #include <string>
 #include <vector>
@@ -36,13 +30,14 @@
 #include<mutex>
 #endif
 
+#include "impl.h"
+
 extern "C"
 {
     const char *opencl_error_string(cl_int error);
 }
 
 
-#include "impl.h"
 
 #define UNUSED(exp) (void)(exp)
 #define OPENCL_ASSERT(exp) do {if (exp != CL_SUCCESS) {std::cerr << "OpenCL error: " << opencl_error_string(exp) << std::endl;} assert (exp == CL_SUCCESS);} while (0)
@@ -400,6 +395,7 @@ void __ocl_report_error (const char *errinfo, const void *private_info,
     UNUSED (user_data);
     std::cerr << errinfo << std::endl;
 }
+
 class session
 {
     cl_context context;
@@ -409,22 +405,33 @@ class session
     memory_manager memory;
     program_cache programs;
 
-public:
+    cl_device_type current_device_type;
 
-    session ()
+public:
+    session (int n_devices, const cl_device_type * devices)
     {
         cl_uint num_devices;
         cl_error_code err;
         cl_platform_id platform;
         err = clGetPlatformIDs (1, &platform, NULL);
         OPENCL_ASSERT (err);
-        err = clGetDeviceIDs (platform, CL_DEVICE_TYPE_GPU, 1, &device,
-                              &num_devices);
+        for (int i = 0; i < n_devices; ++i)
+        {
+            cl_device_type device_type = devices[i];
+            err = clGetDeviceIDs (platform, device_type, 1, &device,
+                                  &num_devices);
+            if (CL_SUCCESS != err)
+            {
+                continue;
+            }
+            assert (num_devices > 0);
+            context = clCreateContext (NULL, 1, &device, __ocl_report_error,
+                                       NULL, &err);
+            current_device_type = device_type;
+            break;
+        }
         OPENCL_ASSERT (err);
-        assert (num_devices > 0);
-        context = clCreateContext (NULL, 1, &device, __ocl_report_error, NULL,
-                                   &err);
-        OPENCL_ASSERT (err);
+
         assert (context);
         queue = clCreateCommandQueue (context, device, 0, &err);
         OPENCL_ASSERT (err);
@@ -439,6 +446,11 @@ public:
         OPENCL_ASSERT (err);
         err = clReleaseContext (context);
         OPENCL_ASSERT (err);
+    }
+
+    cl_device_type get_current_device_type () const
+    {
+        return current_device_type;
     }
 
     pencil_cl_program create_or_get_program (const char *path, const char *opts)
@@ -511,18 +523,72 @@ class runtime
     unsigned int ref_counter;
     session *current_session;
 
+    int current_n_devices;
+    cl_device_type * current_devices;
+
     void delete_session ()
     {
         assert (current_session != NULL);
         delete current_session;
         current_session = NULL;
+        current_devices = NULL;
     }
 
-    void create_new_session ()
+    void record_session_settings (int n_devices, const cl_device_type * devices)
+    {
+        current_n_devices = n_devices;
+        assert (current_devices == NULL);
+        current_devices = new cl_device_type [n_devices];
+        for (int i = 0; i < n_devices; ++i)
+        {
+            current_devices[i] = devices[i];
+        }
+    }
+
+    bool check_session_settings (int n_devices, const cl_device_type * devices)
+    {
+        if (n_devices != current_n_devices)
+        {
+            return false;
+        }
+        for (int i = 0; i < n_devices; ++i)
+        {
+            if (devices[i] != current_devices[i])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void create_new_session (int n_devices, const cl_device_type * devices)
     {
         assert (current_session == NULL);
-        current_session = new session;
+        assert (n_devices > 0);
+        assert (devices != NULL);
+        current_session = new session (n_devices, devices);
+
+        record_session_settings (n_devices, devices);
+
         assert (current_session != NULL);
+    }
+
+    void create_new_dynamic_session ()
+    {
+        int dyn_n_devices = 2;
+        cl_device_type dyn_devices[] = {CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_CPU};
+        create_new_session (dyn_n_devices, dyn_devices);
+    }
+
+    void check_session (int n_devices, const cl_device_type * devices)
+    {
+        if (n_devices != 0 && !check_session_settings(n_devices, devices))
+        {
+            std::cerr << "Cannot reinitialize existing session with different settings. "
+              << "Use PENCIL_TARGET_DEVICE_DYNAMIC for consecutive pencil_init calls to use the existing settings."
+              << std::endl;
+            assert (false);
+        }
     }
 
     static runtime& get_instance ()
@@ -532,7 +598,7 @@ class runtime
     }
 
     runtime ():
-        ref_counter (0), current_session (NULL)
+        ref_counter (0), current_session (NULL), current_devices (NULL)
     {}
 
     runtime (const runtime& ) = delete;
@@ -546,7 +612,7 @@ public:
         return instance.current_session;
     }
 
-    static void retain ()
+    static void retain (int n_devices, const cl_device_type * devices)
     {
         runtime& instance = get_instance ();
 #ifdef THREAD_SAFE
@@ -554,7 +620,18 @@ public:
 #endif
         if (instance.ref_counter++ == 0)
         {
-            instance.create_new_session ();
+            if (n_devices != 0)
+            {
+                instance.create_new_session (n_devices, devices);
+            }
+            else
+            {
+                instance.create_new_dynamic_session ();
+            }
+        }
+        else
+        {
+            instance.check_session (n_devices, devices);
         }
     }
 
@@ -642,9 +719,9 @@ void __int_pencil_free (void *ptr)
 #endif
 }
 
-void __int_pencil_init ()
+void __int_pencil_init (int n_devices, const cl_device_type * devices)
 {
-    runtime::retain ();
+    runtime::retain (n_devices, devices);
 }
 
 void __int_pencil_shutdown ()

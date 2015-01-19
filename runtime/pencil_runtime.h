@@ -29,6 +29,15 @@
 extern "C" {
 #endif
 
+enum PENCIL_INIT_FLAG
+{
+    PENCIL_TARGET_DEVICE_GPU_ONLY,
+    PENCIL_TARGET_DEVICE_CPU_ONLY,
+    PENCIL_TARGET_DEVICE_GPU_AND_CPU,
+    PENCIL_TARGET_DEVICE_CPU_AND_GPU,
+    PENCIL_TARGET_DEVICE_DYNAMIC
+};
+
 /** Memory allocation. Can be used in the same way, malloc is used.  */
 extern void * pencil_alloc (size_t size);
 
@@ -36,7 +45,7 @@ extern void * pencil_alloc (size_t size);
 extern void pencil_free (void * ptr);
 
 /** Initialize PENCIL runtime.  */
-extern void pencil_init ();
+extern void pencil_init (enum PENCIL_INIT_FLAG flag);
 
 /** Release PENCIL runtime.  */
 extern void pencil_shutdown ();

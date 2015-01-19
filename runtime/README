@@ -10,7 +10,7 @@ Build requirements
 * To make PPCG generate calls to PENCIL runtime functions, the following patch must be applied
   to the PPCG sources before building. A patch for PPCG 0.3 can be downloaded
   from github:
-  http://raw.githubusercontent.com/carpproject/benchmarks/9be740d0c1c8cb1ddaa8e58a7274bb44e52cad5e/patches/ppcg/0001-PENCIL-runtime-support.patch
+  http://raw.githubusercontent.com/carpproject/benchmarks/080f10bbed0fa03075d7e4de5b53eb55d629a5c8/patches/ppcg/0001-PENCIL-runtime-support.patch
 
 Usage
 -----
