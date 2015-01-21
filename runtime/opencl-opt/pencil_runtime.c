@@ -110,11 +110,11 @@ enum PENCIL_INIT_FLAG check_environment ()
     }
     if (!strcmp (target_device, GPU_CPU_TARGET_DEVICE))
     {
-        return PENCIL_TARGET_DEVICE_GPU_AND_CPU;
+        return PENCIL_TARGET_DEVICE_GPU_THEN_CPU;
     }
     if (!strcmp (target_device, CPU_GPU_TARGET_DEVICE))
     {
-        return PENCIL_TARGET_DEVICE_CPU_AND_GPU;
+        return PENCIL_TARGET_DEVICE_CPU_THEN_GPU;
     }
     return PENCIL_TARGET_DEVICE_DYNAMIC;
 }
@@ -133,8 +133,8 @@ void pencil_init (enum PENCIL_INIT_FLAG flag)
     {
         case PENCIL_TARGET_DEVICE_GPU_ONLY: return __int_pencil_init (1, gpu_only);
         case PENCIL_TARGET_DEVICE_CPU_ONLY: return __int_pencil_init (1, cpu_only);
-        case PENCIL_TARGET_DEVICE_GPU_AND_CPU: return __int_pencil_init (2, gpu_cpu);
-        case PENCIL_TARGET_DEVICE_CPU_AND_GPU: return __int_pencil_init (2, cpu_gpu);
+        case PENCIL_TARGET_DEVICE_GPU_THEN_CPU: return __int_pencil_init (2, gpu_cpu);
+        case PENCIL_TARGET_DEVICE_CPU_THEN_GPU: return __int_pencil_init (2, cpu_gpu);
         case PENCIL_TARGET_DEVICE_DYNAMIC: return __int_pencil_init (0, NULL);
         default: assert(0);
     }
