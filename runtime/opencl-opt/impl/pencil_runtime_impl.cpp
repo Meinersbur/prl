@@ -389,7 +389,7 @@ public:
         cl_platform_id platform;
         err = clGetPlatformIDs (1, &platform, NULL);
         OPENCL_ASSERT (err);
-        err = clGetDeviceIDs (platform, CL_DEVICE_TYPE_GPU, 1, &device,
+        err = clGetDeviceIDs (platform, CL_DEVICE_TYPE_DEFAULT, 1, &device,
                               &num_devices);
         OPENCL_ASSERT (err);
         assert (num_devices > 0);
