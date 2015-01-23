@@ -23,6 +23,12 @@
 #ifndef IMPL_H
 #define IMPL_H
 
+#if defined (__APPLE__)
+#include <OpenCL/opencl.h>
+#else
+#include <CL/opencl.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -44,7 +50,7 @@ extern "C" {
     void __int_opencl_copy_to_host (pencil_cl_mem, size_t, void *);
     void *__int_pencil_alloc (size_t);
     void __int_pencil_free (void *);
-    void __int_pencil_init ();
+    void __int_pencil_init (int n_devices, const cl_device_type * devices);
     void __int_pencil_shutdown ();
     void __int_opencl_set_kernel_arg (pencil_cl_kernel, cl_uint, size_t,
                                       const void *, int);

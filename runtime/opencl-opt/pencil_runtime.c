@@ -21,10 +21,18 @@
  */
 
 #include <stdlib.h>
+#include <assert.h>
+#include <string.h>
 
 #include "pencil_int.h"
 #include "pencil_runtime.h"
 #include "impl/impl.h"
+
+static const char * env_name = "PENCIL_TARGET_DEVICE";
+static const char * GPU_TARGET_DEVICE = "gpu";
+static const char * CPU_TARGET_DEVICE = "cpu";
+static const char * GPU_CPU_TARGET_DEVICE = "gpu_cpu";
+static const char * CPU_GPU_TARGET_DEVICE = "cpu_gpu";
 
 pencil_cl_program opencl_create_program_from_file (const char *filename,
                                                    const char *opts)
@@ -85,9 +93,51 @@ void pencil_free (void *ptr)
     return __int_pencil_free (ptr);
 }
 
-void pencil_init ()
+enum PENCIL_INIT_FLAG check_environment ()
 {
-    return __int_pencil_init ();
+    const char * target_device = getenv(env_name);
+    if (!target_device)
+    {
+        return PENCIL_TARGET_DEVICE_DYNAMIC;
+    }
+    if (!strcmp (target_device, GPU_TARGET_DEVICE))
+    {
+        return PENCIL_TARGET_DEVICE_GPU_ONLY;
+    }
+    if (!strcmp (target_device, CPU_TARGET_DEVICE))
+    {
+        return PENCIL_TARGET_DEVICE_CPU_ONLY;
+    }
+    if (!strcmp (target_device, GPU_CPU_TARGET_DEVICE))
+    {
+        return PENCIL_TARGET_DEVICE_GPU_THEN_CPU;
+    }
+    if (!strcmp (target_device, CPU_GPU_TARGET_DEVICE))
+    {
+        return PENCIL_TARGET_DEVICE_CPU_THEN_GPU;
+    }
+    return PENCIL_TARGET_DEVICE_DYNAMIC;
+}
+
+void pencil_init (enum PENCIL_INIT_FLAG flag)
+{
+    static const cl_device_type gpu_only[] = {CL_DEVICE_TYPE_GPU};
+    static const cl_device_type cpu_only[] = {CL_DEVICE_TYPE_CPU};
+    static const cl_device_type gpu_cpu[] = {CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_CPU};
+    static const cl_device_type cpu_gpu[] = {CL_DEVICE_TYPE_CPU, CL_DEVICE_TYPE_GPU};
+    if (flag == PENCIL_TARGET_DEVICE_DYNAMIC)
+    {
+        flag = check_environment ();
+    }
+    switch (flag)
+    {
+        case PENCIL_TARGET_DEVICE_GPU_ONLY: return __int_pencil_init (1, gpu_only);
+        case PENCIL_TARGET_DEVICE_CPU_ONLY: return __int_pencil_init (1, cpu_only);
+        case PENCIL_TARGET_DEVICE_GPU_THEN_CPU: return __int_pencil_init (2, gpu_cpu);
+        case PENCIL_TARGET_DEVICE_CPU_THEN_GPU: return __int_pencil_init (2, cpu_gpu);
+        case PENCIL_TARGET_DEVICE_DYNAMIC: return __int_pencil_init (0, NULL);
+        default: assert(0);
+    }
 }
 
 void pencil_shutdown ()

@@ -69,7 +69,7 @@ void pencil_free (void *ptr)
 {
 }
 
-void pencil_init ()
+void pencil_init (enum PENCIL_INIT_FLAG flag)
 {
 }
 
