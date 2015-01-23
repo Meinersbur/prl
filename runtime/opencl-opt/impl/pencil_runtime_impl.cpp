@@ -44,6 +44,14 @@ extern "C"
 
 typedef cl_int cl_error_code;
 
+const int ERROR_CODE = 2;
+
+void die (const char * error)
+{
+    std::cerr << "ERROR: " << error << std::endl;
+    exit(ERROR_CODE);
+}
+
 
 struct __int_pencil_cl_mem
 {
@@ -538,10 +546,13 @@ class runtime
     {
         current_n_devices = n_devices;
         assert (current_devices == NULL);
-        current_devices = new cl_device_type [n_devices];
-        for (int i = 0; i < n_devices; ++i)
+        if (n_devices != 0)
         {
-            current_devices[i] = devices[i];
+            current_devices = new cl_device_type [n_devices];
+            for (int i = 0; i < n_devices; ++i)
+            {
+                current_devices[i] = devices[i];
+            }
         }
     }
 
@@ -568,8 +579,6 @@ class runtime
         assert (devices != NULL);
         current_session = new session (n_devices, devices);
 
-        record_session_settings (n_devices, devices);
-
         assert (current_session != NULL);
     }
 
@@ -577,7 +586,10 @@ class runtime
     {
         int dyn_n_devices = 2;
         cl_device_type dyn_devices[] = {CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_CPU};
-        create_new_session (dyn_n_devices, dyn_devices);
+
+        assert (current_session == NULL);
+        current_session = new session (dyn_n_devices, dyn_devices);
+        assert (current_session != NULL);
     }
 
     void check_session (int n_devices, const cl_device_type * devices)
@@ -587,7 +599,7 @@ class runtime
             std::cerr << "Cannot reinitialize existing session with different settings. "
               << "Use PENCIL_TARGET_DEVICE_DYNAMIC for consecutive pencil_init calls to use the existing settings."
               << std::endl;
-            assert (false);
+            die ("invalid session initialization");
         }
     }
 
@@ -628,6 +640,7 @@ public:
             {
                 instance.create_new_dynamic_session ();
             }
+            instance.record_session_settings (n_devices, devices);
         }
         else
         {
