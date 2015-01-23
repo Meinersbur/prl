@@ -32,6 +32,10 @@
 #include <map>
 #include <iostream>
 
+#ifdef THREAD_SAFE
+#include<mutex>
+#endif
+
 extern "C"
 {
     const char *opencl_error_string(cl_int error);
@@ -107,6 +111,10 @@ class memory_manager
     std::map<void*, pencil_cl_mem> cache;
     size_t unmanaged_buffer_count;
 
+#ifdef THREAD_SAFE
+    std::mutex lock;
+#endif
+
     cl_mem alloc_dev_buffer (cl_context ctx, cl_mem_flags flags, size_t size,
                              void *host_ptr)
     {
@@ -124,6 +132,9 @@ class memory_manager
 public:
     void *alloc (cl_context ctx, cl_command_queue queue, size_t size)
     {
+#ifdef THREAD_SAFE
+        std::unique_lock<std::mutex> lck(lock);
+#endif
         cl_mem dev_buff =
           alloc_dev_buffer (ctx, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
                             size, NULL);
@@ -138,6 +149,9 @@ public:
     pencil_cl_mem dev_alloc (cl_context ctx, cl_mem_flags flags, size_t size,
                              void *host_ptr, cl_command_queue queue)
     {
+#ifdef THREAD_SAFE
+        std::unique_lock<std::mutex> lck(lock);
+#endif
         auto cached = cache.find (host_ptr);
         if (cached != cache.end ())
         {
@@ -187,6 +201,9 @@ public:
 
     void free (void *ptr, cl_command_queue queue)
     {
+#ifdef THREAD_SAFE
+        std::unique_lock<std::mutex> lck(lock);
+#endif
         pencil_cl_mem buff = cache[ptr];
 
         assert (buff->exposed_ptr == ptr);
@@ -312,12 +329,18 @@ public:
 
 class program_cache
 {
+#ifdef THREAD_SAFE
+    std::mutex lock;
+#endif
     std::vector<pencil_cl_program> programs;
 public:
 
     pencil_cl_program get_program (const char *file, const char *opts,
                                    cl_context ctx, cl_device_id dev)
     {
+#ifdef THREAD_SAFE
+        std::unique_lock<std::mutex> lck(lock);
+#endif
         for (auto iter = programs.begin ();
              iter != programs.end (); ++iter)
         {
@@ -334,6 +357,9 @@ public:
                                    const char *opts,
                                    cl_context ctx, cl_device_id dev)
     {
+#ifdef THREAD_SAFE
+        std::unique_lock<std::mutex> lck(lock);
+#endif
         for (auto iter = programs.begin ();
              iter != programs.end (); ++iter)
         {
@@ -349,6 +375,9 @@ public:
 
     void clear ()
     {
+#ifdef THREAD_SAFE
+        std::unique_lock<std::mutex> lck(lock);
+#endif
         for (auto iter = programs.begin ();
              iter != programs.end (); ++iter)
         {
@@ -476,6 +505,9 @@ public:
 
 class runtime
 {
+#ifdef THREAD_SAFE
+    std::mutex lock;
+#endif
     unsigned int ref_counter;
     session *current_session;
 
@@ -517,6 +549,9 @@ public:
     static void retain ()
     {
         runtime& instance = get_instance ();
+#ifdef THREAD_SAFE
+        std::unique_lock<std::mutex> lck(instance.lock);
+#endif
         if (instance.ref_counter++ == 0)
         {
             instance.create_new_session ();
@@ -526,6 +561,9 @@ public:
     static void release ()
     {
         runtime& instance = get_instance ();
+#ifdef THREAD_SAFE
+        std::unique_lock<std::mutex> lck(instance.lock);
+#endif
         assert (instance.ref_counter > 0);
         if (--instance.ref_counter == 0)
         {
