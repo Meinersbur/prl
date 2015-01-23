@@ -32,11 +32,16 @@
 #include <map>
 #include <iostream>
 
+extern "C"
+{
+    const char *opencl_error_string(cl_int error);
+}
+
 
 #include "impl.h"
 
 #define UNUSED(exp) (void)(exp)
-#define OPENCL_ASSERT(exp) do {if (exp != CL_SUCCESS) {std::cerr << "OpenCL error:" << exp << std::endl;} assert (exp == CL_SUCCESS);} while (0)
+#define OPENCL_ASSERT(exp) do {if (exp != CL_SUCCESS) {std::cerr << "OpenCL error: " << opencl_error_string(exp) << std::endl;} assert (exp == CL_SUCCESS);} while (0)
 
 typedef cl_int cl_error_code;
 
@@ -155,13 +160,8 @@ public:
             dev->unmap (queue);
             return;
         }
-        cl_event event;
         cl_error_code err = clEnqueueWriteBuffer (queue, dev->dev, CL_FALSE, 0,
-                                                  size, host, 0, NULL, &event);
-        OPENCL_ASSERT (err);
-        err = clWaitForEvents (1, &event);
-        OPENCL_ASSERT (err);
-        err = clReleaseEvent (event);
+                                                  size, host, 0, NULL, NULL);
         OPENCL_ASSERT (err);
     }
 
@@ -638,13 +638,8 @@ void __int_opencl_launch_kernel (pencil_cl_kernel kernel, cl_uint work_dim,
                                  const size_t *lws)
 {
     cl_command_queue queue = runtime::get_session ()->get_command_queue ();
-    cl_event event;
     cl_error_code err = clEnqueueNDRangeKernel (queue, kernel->kernel, work_dim,
                                                 goffset, gws, lws, 0, NULL,
-                                                &event);
-    OPENCL_ASSERT (err);
-    err = clWaitForEvents (1, &event);
-    OPENCL_ASSERT (err);
-    err = clReleaseEvent (event);
+                                                NULL);
     OPENCL_ASSERT (err);
 }

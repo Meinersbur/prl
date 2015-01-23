@@ -6,7 +6,7 @@ AM_CPPFLAGS = "-I${abs_srcdir}/runtime"
 
 lib_LTLIBRARIES = libocl_pencil_ref.la libocl_pencil_opt.la
 
-libocl_pencil_ref_la_SOURCES = opencl/pencil_runtime.c ocl_utilities.c
+libocl_pencil_ref_la_SOURCES = opencl/pencil_runtime.c
 
 libocl_pencil_opt_la_SOURCES = opencl-opt/pencil_runtime.c opencl-opt/impl/pencil_runtime_impl.cpp ocl_utilities.c
 
