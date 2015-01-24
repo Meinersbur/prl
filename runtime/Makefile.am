@@ -15,4 +15,11 @@ if HOST_ALLOC
 endif
 
 # Note: Not good to install pencil_int.h into opencl subdirectory; Might be confused with official OpenCL headers
-nobase_include_HEADERS = pencil_runtime.h opencl/pencil_int.h
+nobase_include_HEADERS = pencil_runtime.h 
+
+noinst_HEADERS = \
+	ocl_utilities.h \
+	opencl/pencil_int.h \
+	opencl-opt/pencil_int.h \
+	opencl-opt/impl/impl.h
+
