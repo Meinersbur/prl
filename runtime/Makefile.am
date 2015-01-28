@@ -4,6 +4,8 @@ ACLOCAL_AMFLAGS = -I m4
 
 AM_CPPFLAGS = "-I${abs_srcdir}/runtime"
 
+AM_LDFLAGS = -static-libstdc++
+
 lib_LTLIBRARIES = libocl_pencil_ref.la libocl_pencil_opt.la
 
 libocl_pencil_ref_la_SOURCES = opencl/pencil_runtime.c
@@ -22,4 +24,3 @@ noinst_HEADERS = \
 	opencl/pencil_int.h \
 	opencl-opt/pencil_int.h \
 	opencl-opt/impl/impl.h
-
