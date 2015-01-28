@@ -19,17 +19,17 @@ AC_PROG_LIBTOOL
 AC_ARG_ENABLE([host-alloc],
 	[AS_HELP_STRING([--enable-host-alloc], [Allocate on host])],
 	[case "${enableval}" in
-		yes) enabled_host_alloc=${enableval} ;;
-		no)  enabled_host_alloc=${enableval} ;;
+		yes) CPPFLAGS="${CPPFLAGS} -DHOST_ALLOC=1" ;;
+		no)  ;;
 		*) AC_MSG_ERROR([bad value ${enableval} for --enable-host-alloc]) ;;
 	esac],
-	[enabled_host_alloc=no])
+	[])
 AM_CONDITIONAL(HOST_ALLOC, test "x$enabled_host_alloc" = xyes)
 
 AC_ARG_ENABLE([thread-safety],
     [AS_HELP_STRING([--enable-thread-safety], [Make thread-safe library])],
     [case "${enableval}" in
-        yes) CPPFLAGS="${CPPFLAGS} -DTHREAD_SAFE" ;;
+        yes) CPPFLAGS="${CPPFLAGS} -DTHREAD_SAFE=1" ;;
         no)  ;;
         *) AC_MSG_ERROR([bad value ${enableval} for --enable-thread-safety]) ;;
     esac],
