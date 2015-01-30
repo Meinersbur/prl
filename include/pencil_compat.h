@@ -25,6 +25,11 @@
 #define PENCIL_COMPAT_H
 
 #include <assert.h>
+#include <stdbool.h>
+
+/* PENCIL built-in functions prototypes and (possible) implementations. */
+#include "pencil_lib.h"
+
 
 /* PENCIL functions */
 #define __pencil_kill(...)
@@ -41,15 +46,9 @@
 #if __ARM_FP16_ARGS
   /* use __fp16 only if usable as arguments (some older ARM targets only supports it in structs or arrays) */
   #define half __fp16
-#else
+#else /* __ARM_FP16_ARGS */
   /* 16-bit floating-point is not supported: fallback to float */
   #define half float
-#endif
+#endif /* __ARM_FP16_ARGS */
 
-/* bool */
-#include <stdbool.h>
-
-/* PENCIL built-in functions prototypes and (possible) implementations. */
-#include "pencil_lib.h"
-
-#endif
+#endif /* PENCIL_COMPAT_H */
