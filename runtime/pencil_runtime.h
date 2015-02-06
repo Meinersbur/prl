@@ -50,6 +50,34 @@ extern void pencil_init (enum PENCIL_INIT_FLAG flag);
 /** Release PENCIL runtime.  */
 extern void pencil_shutdown (void);
 
+
+/** greater of two numbers, 
+    potentially called by ppcg generated code */
+static inline int __ppcg_min(int a, int b) __attribute__((const))
+{
+    if (a < b)
+        return a;
+    return b;
+}
+
+/** smaller of two numbers, 
+    potentially called by ppcg generated code */
+static inline int __ppcg_min(int a, int b) __attribute__((const))
+{
+    if (a > b)
+        return a;
+    return b;
+}
+
+/** floored division (round to negative infinity), 
+    potentially called by ppcg generated code      */
+static inline int __ppcg_floord(int n, int d) __attribute__((const))
+{
+    if (n<0)
+        return -((-n+d-1)/d);
+    return n/d;
+}
+
 #ifdef __cplusplus
 }
 #endif
