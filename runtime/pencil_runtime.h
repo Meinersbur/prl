@@ -51,18 +51,18 @@ extern void pencil_init (enum PENCIL_INIT_FLAG flag);
 extern void pencil_shutdown (void);
 
 
-/** greater of two numbers, 
+/** smaller of two numbers, 
     potentially called by ppcg generated code */
-static inline int __ppcg_min(int a, int b) __attribute__((const))
+static inline int __attribute__((const)) __ppcg_min(int a, int b) 
 {
     if (a < b)
         return a;
     return b;
 }
 
-/** smaller of two numbers, 
+/** greater of two numbers, 
     potentially called by ppcg generated code */
-static inline int __ppcg_min(int a, int b) __attribute__((const))
+static inline int __attribute__((const)) __ppcg_max(int a, int b) 
 {
     if (a > b)
         return a;
@@ -71,7 +71,7 @@ static inline int __ppcg_min(int a, int b) __attribute__((const))
 
 /** floored division (round to negative infinity), 
     potentially called by ppcg generated code      */
-static inline int __ppcg_floord(int n, int d) __attribute__((const))
+static inline int __attribute__((const)) __ppcg_floord(int n, int d)
 {
     if (n<0)
         return -((-n+d-1)/d);
