@@ -25,6 +25,11 @@
 #include <vector>
 #include <map>
 #include <iostream>
+#include <chrono>
+#include <limits>
+#include <tuple>
+#include <algorithm>
+#include <functional>
 
 #ifdef THREAD_SAFE
 #include<mutex>
@@ -52,6 +57,58 @@ void die (const char * error)
     exit(ERROR_CODE);
 }
 
+// host_stopwatch
+class stopwatch {
+public:
+	typedef typename std::chrono::high_resolution_clock::time_point::duration duration_t;
+
+private:
+	typedef typename std::chrono::high_resolution_clock::time_point::time_point timepoint_t;
+	
+	bool enabled;
+	duration_t *counter;
+	timepoint_t start;
+	
+	stopwatch(const stopwatch &that);
+	
+public:
+	stopwatch() : enabled(false), counter(), start() {}
+	
+	stopwatch(duration_t &counter, bool enabled) : enabled(enabled), counter(&counter) {
+		if (enabled)
+			start = std::chrono::high_resolution_clock::now();
+	}
+	
+	~stopwatch() {
+		if (!enabled)
+			return; 
+		
+		auto stop = std::chrono::high_resolution_clock::now();
+		auto duration = (stop - start);
+		*counter += duration;
+	}
+	
+	// move ctor
+	stopwatch(stopwatch &&that) : enabled(true), counter(that.counter), start(that.start) {
+		that.enabled = false;
+	}
+	
+	const stopwatch &operator=(stopwatch &&that) { 
+		if (this != &that) {
+			enabled = that.enabled;
+			counter = that.counter;
+			start = that.start;
+			that.enabled = false;
+		}
+		
+		return *this;
+	}
+};
+
+
+bool __int_profiling_enabled();
+void __int_add_event(cl_event event);
+
 
 struct __int_pencil_cl_mem
 {
@@ -72,11 +129,14 @@ struct __int_pencil_cl_mem
         {
             return;
         }
+        cl_event event = NULL;
         cl_error_code err;
-        host = clEnqueueMapBuffer (queue, dev, CL_TRUE,
+        host = clEnqueueMapBuffer (queue, dev, CL_FALSE/*non-blocking*/,
                                    CL_MAP_READ | CL_MAP_WRITE, 0, size,
-                                   0, NULL, NULL, &err);
+                                   0, NULL, __int_profiling_enabled() ? &event : NULL, &err);
         OPENCL_ASSERT (err);
+        __int_add_event(event);
+
         if (reset)
         {
             exposed_ptr = host;
@@ -93,16 +153,17 @@ struct __int_pencil_cl_mem
         }
         assert (dev);
 
-        cl_event event;
-
+        cl_event event = NULL;
         cl_error_code err = clEnqueueUnmapMemObject (queue, dev, host, 0, NULL,
-                                                     &event);
-        OPENCL_ASSERT (err);
-        err = clWaitForEvents (1, &event);
+        		__int_profiling_enabled() ? &event : NULL);
         OPENCL_ASSERT (err);
 
-        err = clReleaseEvent (event);
-        OPENCL_ASSERT (err);
+        //err = clWaitForEvents (1, &event);
+        //OPENCL_ASSERT (err);
+        //err = clReleaseEvent (event);
+        //OPENCL_ASSERT (err);
+        __int_add_event(event);
+
         host = NULL;
     }
 };
@@ -177,9 +238,12 @@ public:
             dev->unmap (queue);
             return;
         }
-        cl_error_code err = clEnqueueWriteBuffer (queue, dev->dev, CL_FALSE, 0,
-                                                  size, host, 0, NULL, NULL);
+        cl_event event = NULL;
+        cl_error_code err = clEnqueueWriteBuffer (queue, dev->dev, CL_FALSE/*non-blocking*/, 0,
+                                                  size, host, 0, NULL, __int_profiling_enabled() ? &event : NULL);
         OPENCL_ASSERT (err);
+
+        __int_add_event(event);
     }
 
     void copy_to_host (cl_command_queue queue, pencil_cl_mem dev, size_t size,
@@ -192,14 +256,16 @@ public:
             dev->map (queue, false);
             return;
         }
-        cl_event event;
-        cl_error_code err = clEnqueueReadBuffer (queue, dev->dev, CL_FALSE, 0,
-                                                 size, host, 0, NULL, &event);
+        cl_event event = NULL;
+        cl_error_code err = clEnqueueReadBuffer (queue, dev->dev, CL_FALSE/*non-blocking*/, 0,
+                                                 size, host, 0, NULL, __int_profiling_enabled() ? &event : NULL);
         OPENCL_ASSERT (err);
-        err = clWaitForEvents (1, &event);
-        OPENCL_ASSERT (err);
-        err = clReleaseEvent (event);
-        OPENCL_ASSERT (err);
+
+        //err = clWaitForEvents (1, &event);
+        //OPENCL_ASSERT (err);
+        //err = clReleaseEvent (event);
+        //OPENCL_ASSERT (err);
+        __int_add_event(event);
     }
 
     void free (void *ptr, cl_command_queue queue)
@@ -404,6 +470,7 @@ void __ocl_report_error (const char *errinfo, const void *private_info,
     std::cerr << errinfo << std::endl;
 }
 
+
 class session
 {
     cl_context context;
@@ -414,10 +481,29 @@ class session
     program_cache programs;
 
     cl_device_type current_device_type;
+    bool profiling_enabled;
+
+	stopwatch::duration_t accumulated_overhead_time;
+	stopwatch::duration_t accumulated_copy_to_device_time;
+	stopwatch::duration_t accumulated_copy_to_host_time;
+	stopwatch::duration_t accumulated_compute_time;
+	stopwatch::duration_t accumulated_waiting_time;
+	
+	std::vector<cl_event> pending_events;
+	uint64_t accumulated_gpu_copy_to_device_time;
+	uint64_t accumulated_gpu_copy_to_host_time;
+	uint64_t accumulated_gpu_compute_time;
+	uint64_t accumulated_gpu_unused_time;
+	uint64_t accumulated_gpu_working_time;
 
 public:
-    session (int n_devices, const cl_device_type * devices)
+    session (int n_devices, const cl_device_type * devices, bool profiling_enabled)
+		: profiling_enabled(profiling_enabled),
+			accumulated_overhead_time(0), accumulated_copy_to_device_time(0), accumulated_copy_to_host_time(0), accumulated_compute_time(0),
+		accumulated_gpu_copy_to_device_time(0), accumulated_gpu_copy_to_host_time(0), accumulated_gpu_compute_time(0),accumulated_gpu_unused_time(0),accumulated_gpu_working_time(0)
     {
+		stopwatch wtch(accumulated_overhead_time, profiling_enabled);
+
         cl_uint num_devices;
         cl_error_code err;
         cl_platform_id platform;
@@ -441,13 +527,15 @@ public:
         OPENCL_ASSERT (err);
 
         assert (context);
-        queue = clCreateCommandQueue (context, device, 0, &err);
+        queue = clCreateCommandQueue (context, device, profiling_enabled ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
         OPENCL_ASSERT (err);
         assert (queue);
     }
 
     ~session ()
     {
+		stopwatch wtch(accumulated_overhead_time, profiling_enabled);
+
         programs.clear ();
         cl_error_code err;
         err = clReleaseCommandQueue (queue);
@@ -456,6 +544,14 @@ public:
         OPENCL_ASSERT (err);
     }
 
+    stopwatch get_overhead_stopwatch() {
+		return stopwatch(accumulated_overhead_time, profiling_enabled);
+	}
+	
+	stopwatch get_compute_stopwatch() {
+		return stopwatch(accumulated_compute_time, profiling_enabled);
+	}
+    
     cl_device_type get_current_device_type () const
     {
         return current_device_type;
@@ -463,11 +559,15 @@ public:
 
     pencil_cl_program create_or_get_program (const char *path, const char *opts)
     {
+		stopwatch wtch(accumulated_overhead_time, profiling_enabled);
+
         return programs.get_program (path, opts, context, device);
     }
 
     pencil_cl_program create_or_get_program (const char *program, size_t size, const char *opts)
     {
+		stopwatch wtch(accumulated_overhead_time, profiling_enabled);
+
         return programs.get_program (program, size, opts, context, device);
     }
 
@@ -487,32 +587,44 @@ public:
 
     void *alloc_and_return_host_ptr (size_t size)
     {
+		stopwatch wtch(accumulated_overhead_time, profiling_enabled);
+
         return memory.alloc (context, queue, size);
     }
 
     pencil_cl_mem alloc_and_return_dev_ptr (cl_mem_flags flags, size_t size,
                                             void *host_ptr)
     {
+		stopwatch wtch(accumulated_overhead_time, profiling_enabled);
+
         return memory.dev_alloc (context, flags, size, host_ptr, queue);
     }
 
     void free_host_ptr (void *ptr)
     {
+		stopwatch wtch(accumulated_overhead_time, profiling_enabled);
+		
         memory.free (ptr, queue);
     }
 
     void free_dev_buffer (pencil_cl_mem dev)
     {
+		stopwatch wtch(accumulated_overhead_time, profiling_enabled);
+
         memory.dev_free (dev);
     }
 
     void copy_to_device (pencil_cl_mem dev, size_t size, void *host)
     {
+		stopwatch wtch(accumulated_copy_to_device_time, profiling_enabled);
+
         memory.copy_to_device (queue, dev, size, host);
     }
 
     void copy_to_host (pencil_cl_mem dev, size_t size, void *host)
     {
+		stopwatch wtch(accumulated_copy_to_host_time, profiling_enabled);
+
         memory.copy_to_host (queue, dev, size, host);
     }
 
@@ -520,6 +632,183 @@ public:
     {
         return queue;
     }
+    
+    bool is_profiling_enabled() {
+    	return profiling_enabled;
+    }
+
+    void add_event(cl_event event) {
+    	assert(profiling_enabled == !!event);
+    	if (!event)
+    		return;
+
+    	if (profiling_enabled) {
+    		pending_events.push_back(event);
+    	} else {
+    		auto err = clReleaseEvent(event);
+    		OPENCL_ASSERT(err);
+    	}
+    }
+
+    typedef std::tuple<cl_ulong,cl_ulong, 	cl_command_type> tuple_t;
+    void accumulate_durations(const std::vector<tuple_t> &exec_periods, const std::function<bool(const tuple_t&)> &filter, cl_ulong start_queing, cl_ulong &accumulated_working, cl_ulong &accumulated_idle) {
+      	ulong prev_end = start_queing;
+        	for (auto const &p : exec_periods) {
+        		if (!filter(p))
+        			continue;
+
+        		auto &start = std::get<0>(p);
+        		auto &end = std::get<1>(p);
+        		auto &cat = std::get<2>(p);
+
+        		if (prev_end <= start) {
+        			// Case 1: |<- prev ->|  |<- cur ->|
+        			assert(start <= end);
+
+        			auto cur_duration = end - start;
+        			auto unused_duraction = start - prev_end;
+
+        			accumulated_working += cur_duration;
+        			accumulated_idle += unused_duraction;
+
+        			prev_end = end;
+        		} else if (end <= prev_end) {
+            		// Case 2: |<-   prev   ->|
+            		//           |<- cur ->|
+        			assert(start <= end);
+        		} else {
+    				// Case 3: |<- prev ->|
+    				//                |<- cur ->|
+        			assert(start <= prev_end);
+        			assert(prev_end <= end);
+
+        			auto cur_duration = end - prev_end;
+        			accumulated_working += cur_duration;
+
+        			prev_end = end;
+        		}
+        	}
+    }
+
+    void wait_pending() {
+    	cl_int err;
+
+    	{
+    		stopwatch wtch(accumulated_waiting_time, profiling_enabled);
+    		err = clFinish(queue);
+    		OPENCL_ASSERT(err);
+    	}
+
+    	if (!profiling_enabled)
+    		return;
+
+    	{
+    	stopwatch wtch(accumulated_overhead_time, profiling_enabled);
+
+    	if (pending_events.empty())
+    		return;
+
+    	cl_ulong start_queing = std::numeric_limits<cl_ulong>::max();
+    	std::vector<tuple_t> exec_periods;
+    	exec_periods.reserve(pending_events.size());
+    	for (auto e : pending_events) {
+    		cl_ulong queued, submit, start, end;
+    		cl_command_type cmdty;
+    		cl_int status;
+
+    		err = clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_QUEUED, sizeof(queued), &queued, NULL);
+    		OPENCL_ASSERT(err);
+    		err = clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_SUBMIT, sizeof(submit), &submit, NULL);
+    		OPENCL_ASSERT(err);
+    		err = clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(start), &start, NULL);
+    		OPENCL_ASSERT(err);
+    		err = clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END, sizeof(end), &end, NULL);
+    		OPENCL_ASSERT(err);
+    		err = clGetEventInfo(e, CL_EVENT_COMMAND_TYPE, sizeof(cmdty), &cmdty, NULL);
+    		OPENCL_ASSERT(err);
+    		err = clGetEventInfo(e, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(status), &status, NULL);
+    		OPENCL_ASSERT(err);
+
+    		assert(status == CL_COMPLETE);
+
+    		// Ensure consistency
+    		if (start < queued)
+    			queued = start; // If this happens it might be because the clock used for host and device are not synchronized; we prioritize the device clock (START and END events)
+    		if (end < start)
+    			end = start; // Don't know hiow this could happen
+
+    		// Check consistency
+    		if (!(queued <= start && start <= end)) {
+    			std::cerr << "CL_PROFILING_COMMAND_QUEUED = " << queued << "\n";
+    			std::cerr << "CL_PROFILING_COMMAND_SUBMIT = " << submit << "\n";
+    			std::cerr << "CL_PROFILING_COMMAND_START  = " << start << "\n";
+    			std::cerr << "CL_PROFILING_COMMAND_END    = " << end << "\n";
+    			std::cerr << std::flush;
+    		}
+    		assert(queued <= start);
+    		assert(start <= end);
+
+    		start_queing = std::min(start_queing, queued);
+    		exec_periods.emplace_back(start,end,cmdty);
+
+    		err = clReleaseEvent(e);
+    		OPENCL_ASSERT(err);
+    	}
+    	pending_events.clear();
+
+    	// sort according start time
+    	std::sort(exec_periods.begin(), exec_periods.end(), [](const tuple_t &x, const tuple_t &y) -> int { return std::get<0>(x) < std::get<0>(y); } );
+
+    	accumulate_durations(exec_periods, [](const tuple_t &p)->bool { return true; }, start_queing, accumulated_gpu_working_time, accumulated_gpu_unused_time);
+    	cl_ulong dummy;
+       	accumulate_durations(exec_periods, [](const tuple_t &p)->bool { return std::get<2>(p) == CL_COMMAND_NDRANGE_KERNEL ||  std::get<2>(p) == CL_COMMAND_TASK || std::get<2>(p) == CL_COMMAND_NATIVE_KERNEL; }, start_queing, accumulated_gpu_compute_time, dummy);
+       	accumulate_durations(exec_periods, [](const tuple_t &p)->bool { return std::get<2>(p) == CL_COMMAND_WRITE_BUFFER || std::get<2>(p) == CL_COMMAND_WRITE_IMAGE || std::get<2>(p) == CL_COMMAND_MAP_BUFFER|| std::get<2>(p) == CL_COMMAND_MAP_IMAGE; }, start_queing, accumulated_gpu_copy_to_device_time, dummy);
+       	accumulate_durations(exec_periods, [](const tuple_t &p)->bool { return std::get<2>(p) == CL_COMMAND_READ_BUFFER || std::get<2>(p) == CL_COMMAND_READ_IMAGE || std::get<2>(p) == CL_COMMAND_UNMAP_MEM_OBJECT;  }, start_queing, accumulated_gpu_copy_to_host_time, dummy);
+    	}
+    }
+
+    void dump_stats() {
+    	auto cpu_total = accumulated_copy_to_device_time + accumulated_copy_to_host_time + accumulated_compute_time + accumulated_overhead_time+accumulated_waiting_time;
+    	auto gpu_total = accumulated_gpu_working_time + accumulated_gpu_unused_time;
+
+    	std::cerr << "===============================================================================\n";
+		if (profiling_enabled) {
+    	std::cerr << "CPU:\n";
+		std::cerr << "Copy-to-device: " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_copy_to_device_time).count() << " ms\n";
+		std::cerr << "Compute:        " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_compute_time).count() << " ms\n";
+		std::cerr << "Copy-to-host:   " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_copy_to_host_time).count() << " ms\n";
+		std::cerr << "Waiting:        " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_waiting_time).count() << " ms\n";
+		std::cerr << "Overhead:       " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_overhead_time).count() << " ms\n";
+		std::cerr << "Total:          " << std::chrono::duration_cast<std::chrono::milliseconds>(cpu_total).count() << " ms\n";
+		std::cerr << "\n";
+		std::cerr << "GPU:\n";
+		std::cerr << "Copy-to-device: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_copy_to_device_time)).count() << " ms\n";
+		std::cerr << "Compute:        " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_compute_time)).count() << " ms\n";
+		std::cerr << "Copy-to-host:   " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_copy_to_host_time)).count() << " ms\n";
+		std::cerr << "Idle:           " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_unused_time)).count() << " ms\n";
+		std::cerr << "Working:        " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_working_time)).count() << " ms\n";
+		std::cerr << "Total:          " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(gpu_total)).count() << " ms\n";
+		std::cerr << "===============================================================================\n";
+		} else {
+			std::cerr << "Profiling disabled; cannot print profiling result\n";
+			std::cerr << "Set PENCIL_PROFILING environment variable to enable.\n";
+		}
+		std::cerr << std::flush;
+	}
+	
+	void reset_stats() {
+		accumulated_copy_to_device_time = accumulated_copy_to_device_time.zero();
+		accumulated_copy_to_host_time = accumulated_copy_to_host_time.zero();
+		accumulated_compute_time = accumulated_compute_time.zero();
+		accumulated_waiting_time = accumulated_waiting_time.zero();
+		accumulated_overhead_time = accumulated_overhead_time.zero();
+
+		accumulated_gpu_copy_to_device_time = 0;
+		accumulated_gpu_compute_time = 0;
+		accumulated_gpu_copy_to_host_time= 0;
+		accumulated_gpu_unused_time = 0;
+		accumulated_gpu_working_time = 0;
+	}
 };
 
 
@@ -572,29 +861,29 @@ class runtime
         return true;
     }
 
-    void create_new_session (int n_devices, const cl_device_type * devices)
+    void create_new_session (int n_devices, const cl_device_type * devices, bool profiling_enabled)
     {
         assert (current_session == NULL);
         assert (n_devices > 0);
         assert (devices != NULL);
-        current_session = new session (n_devices, devices);
+        current_session = new session (n_devices, devices, profiling_enabled);
 
         assert (current_session != NULL);
     }
 
-    void create_new_dynamic_session ()
+    void create_new_dynamic_session (bool profiling_enabled)
     {
         int dyn_n_devices = 2;
         cl_device_type dyn_devices[] = {CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_CPU};
 
         assert (current_session == NULL);
-        current_session = new session (dyn_n_devices, dyn_devices);
+        current_session = new session (dyn_n_devices, dyn_devices, profiling_enabled);
         assert (current_session != NULL);
     }
 
-    void check_session (int n_devices, const cl_device_type * devices)
+    void check_session (int n_devices, const cl_device_type * devices, bool profiling_enabled)
     {
-        if (n_devices != 0 && !check_session_settings(n_devices, devices))
+        if ((n_devices != 0 && !check_session_settings(n_devices, devices)) || get_session()->is_profiling_enabled() != profiling_enabled)
         {
             std::cerr << "Cannot reinitialize existing session with different settings. "
               << "Use PENCIL_TARGET_DEVICE_DYNAMIC for consecutive pencil_init calls to use the existing settings."
@@ -609,9 +898,7 @@ class runtime
         return instance;
     }
 
-    runtime ():
-        ref_counter (0), current_session (NULL), current_devices (NULL)
-    {}
+    runtime (): ref_counter (0), current_session (NULL), current_n_devices(0), current_devices (NULL) {}
 
     runtime (const runtime& ) = delete;
     void operator= (const runtime& ) = delete;
@@ -624,8 +911,9 @@ public:
         return instance.current_session;
     }
 
-    static void retain (int n_devices, const cl_device_type * devices)
+    static void retain (int n_devices, const cl_device_type * devices, bool profiling_enabled)
     {
+		auto start = std::chrono::high_resolution_clock::now();
         runtime& instance = get_instance ();
 #ifdef THREAD_SAFE
         std::unique_lock<std::mutex> lck(instance.lock);
@@ -634,29 +922,35 @@ public:
         {
             if (n_devices != 0)
             {
-                instance.create_new_session (n_devices, devices);
+                instance.create_new_session (n_devices, devices, profiling_enabled);
             }
             else
             {
-                instance.create_new_dynamic_session ();
+                instance.create_new_dynamic_session (profiling_enabled);
             }
             instance.record_session_settings (n_devices, devices);
         }
         else
         {
-            instance.check_session (n_devices, devices);
+            instance.check_session (n_devices, devices, profiling_enabled);
         }
     }
 
-    static void release ()
+    static void release (bool print_stats_on_release)
     {
         runtime& instance = get_instance ();
 #ifdef THREAD_SAFE
         std::unique_lock<std::mutex> lck(instance.lock);
 #endif
+
+    	auto session = runtime::get_session();
+    	session->wait_pending();
+
         assert (instance.ref_counter > 0);
         if (--instance.ref_counter == 0)
         {
+        	if (print_stats_on_release)
+        		session->dump_stats();
             instance.delete_session ();
         }
     }
@@ -683,7 +977,7 @@ void __int_opencl_release_program (pencil_cl_program program)
 pencil_cl_kernel __int_opencl_create_kernel (pencil_cl_program program,
                                              const char *name)
 {
-    assert (runtime::get_session ());
+    auto wtch = runtime::get_session ()->get_overhead_stopwatch();
     return program->get_kernel (name);
 }
 
@@ -717,6 +1011,7 @@ void __int_opencl_copy_to_host (pencil_cl_mem dev, size_t size, void *host)
 void *__int_pencil_alloc (size_t size)
 {
 #ifdef HOST_ALLOC
+	auto wtch = runtime::get_session ()->get_overhead_stopwatch();
     return malloc (size);
 #else
     return runtime::get_session ()->alloc_and_return_host_ptr (size);
@@ -726,26 +1021,29 @@ void *__int_pencil_alloc (size_t size)
 void __int_pencil_free (void *ptr)
 {
 #ifdef HOST_ALLOC
+	auto wtch = runtime::get_session ()->get_overhead_stopwatch();
     free (ptr);
 #else
     runtime::get_session ()->free_host_ptr (ptr);
 #endif
 }
 
-void __int_pencil_init (int n_devices, const cl_device_type * devices)
+void __int_pencil_init (int n_devices, const cl_device_type * devices, bool profiling_enabled)
 {
-    runtime::retain (n_devices, devices);
+    runtime::retain (n_devices, devices, profiling_enabled);
 }
 
-void __int_pencil_shutdown ()
+void __int_pencil_shutdown (bool print_stats_on_release)
 {
-    runtime::release ();
+    runtime::release (print_stats_on_release);
 }
 
 
 void __int_opencl_set_kernel_arg (pencil_cl_kernel kernel, cl_uint idx,
                                   size_t size, const void *value, int buffer)
 {
+	auto wtch = runtime::get_session ()->get_overhead_stopwatch();
+
     if (!buffer)
     {
         cl_error_code err = clSetKernelArg (kernel->kernel, idx, size, value);
@@ -765,9 +1063,33 @@ void __int_opencl_launch_kernel (pencil_cl_kernel kernel, cl_uint work_dim,
                                  const size_t *goffset, const size_t *gws,
                                  const size_t *lws)
 {
+	auto session = runtime::get_session ();
+	auto wtch = session->get_compute_stopwatch();
+
     cl_command_queue queue = runtime::get_session ()->get_command_queue ();
+	cl_event event = NULL;
     cl_error_code err = clEnqueueNDRangeKernel (queue, kernel->kernel, work_dim,
                                                 goffset, gws, lws, 0, NULL,
-                                                NULL);
-    OPENCL_ASSERT (err);
+                                                session->is_profiling_enabled() ? &event : NULL);
+	OPENCL_ASSERT (err);
+	//clWaitForEvents(1, &event);
+	session->add_event(event);
+}
+
+void __int_pencil_dump_stats() {
+	runtime::get_session ()->dump_stats();
+}
+
+void __int_pencil_reset_stats() {
+	runtime::get_session ()->reset_stats();
+}
+
+void __int_add_event(cl_event event) {
+	auto session = runtime::get_session();
+	session->add_event(event);
+}
+
+bool __int_profiling_enabled() {
+	auto session = runtime::get_session();
+	return session->is_profiling_enabled();
 }

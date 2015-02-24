@@ -50,12 +50,15 @@ extern "C" {
     void __int_opencl_copy_to_host (pencil_cl_mem, size_t, void *);
     void *__int_pencil_alloc (size_t);
     void __int_pencil_free (void *);
-    void __int_pencil_init (int n_devices, const cl_device_type * devices);
-    void __int_pencil_shutdown ();
+    void __int_pencil_init (int n_devices, const cl_device_type * devices, bool profiling_enabled);
+    void __int_pencil_shutdown  (bool print_stats_on_release);
     void __int_opencl_set_kernel_arg (pencil_cl_kernel, cl_uint, size_t,
                                       const void *, int);
     void __int_opencl_launch_kernel (pencil_cl_kernel, cl_uint, const size_t *,
                                      const size_t *, const size_t *);
+	
+	void __int_pencil_dump_stats();
+	void __int_pencil_reset_stats();
 
 #ifdef __cplusplus
 }

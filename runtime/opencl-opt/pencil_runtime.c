@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "pencil_int.h"
 #include "pencil_runtime.h"
@@ -33,6 +34,7 @@ static const char * GPU_TARGET_DEVICE = "gpu";
 static const char * CPU_TARGET_DEVICE = "cpu";
 static const char * GPU_CPU_TARGET_DEVICE = "gpu_cpu";
 static const char * CPU_GPU_TARGET_DEVICE = "cpu_gpu";
+static const char * PENCIL_PROFILING = "PENCIL_PROFILING";
 
 pencil_cl_program opencl_create_program_from_file (const char *filename,
                                                    const char *opts)
@@ -121,6 +123,9 @@ enum PENCIL_INIT_FLAG check_environment ()
 
 void pencil_init (enum PENCIL_INIT_FLAG flag)
 {
+	bool profiling_print =  getenv(PENCIL_PROFILING);
+	bool profiling_enabled = profiling_print | (flag&PENCIL_PROFILING_ENABLED);
+
     static const cl_device_type gpu_only[] = {CL_DEVICE_TYPE_GPU};
     static const cl_device_type cpu_only[] = {CL_DEVICE_TYPE_CPU};
     static const cl_device_type gpu_cpu[] = {CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_CPU};
@@ -131,18 +136,19 @@ void pencil_init (enum PENCIL_INIT_FLAG flag)
     }
     switch (flag)
     {
-        case PENCIL_TARGET_DEVICE_GPU_ONLY: return __int_pencil_init (1, gpu_only);
-        case PENCIL_TARGET_DEVICE_CPU_ONLY: return __int_pencil_init (1, cpu_only);
-        case PENCIL_TARGET_DEVICE_GPU_THEN_CPU: return __int_pencil_init (2, gpu_cpu);
-        case PENCIL_TARGET_DEVICE_CPU_THEN_GPU: return __int_pencil_init (2, cpu_gpu);
-        case PENCIL_TARGET_DEVICE_DYNAMIC: return __int_pencil_init (0, NULL);
+        case PENCIL_TARGET_DEVICE_GPU_ONLY: return __int_pencil_init (1, gpu_only, profiling_enabled);
+        case PENCIL_TARGET_DEVICE_CPU_ONLY: return __int_pencil_init (1, cpu_only, profiling_enabled);
+        case PENCIL_TARGET_DEVICE_GPU_THEN_CPU: return __int_pencil_init (2, gpu_cpu, profiling_enabled);
+        case PENCIL_TARGET_DEVICE_CPU_THEN_GPU: return __int_pencil_init (2, cpu_gpu, profiling_enabled);
+        case PENCIL_TARGET_DEVICE_DYNAMIC: return __int_pencil_init (0, NULL, profiling_enabled);
         default: assert(0);
     }
 }
 
 void pencil_shutdown ()
 {
-    return __int_pencil_shutdown ();
+	bool profiling_print =  getenv(PENCIL_PROFILING);
+    return __int_pencil_shutdown (profiling_print);
 }
 
 
@@ -157,4 +163,13 @@ void opencl_launch_kernel (pencil_cl_kernel kernel, cl_uint work_dim,
                            const size_t *lws)
 {
     return __int_opencl_launch_kernel (kernel, work_dim, goffset, gws, lws);
+}
+
+
+void pencil_dump_stats (void) {
+	__int_pencil_dump_stats();
+}
+
+void pencil_reset_stats (void) {
+	__int_pencil_reset_stats();
 }

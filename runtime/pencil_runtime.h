@@ -35,7 +35,8 @@ enum PENCIL_INIT_FLAG
     PENCIL_TARGET_DEVICE_CPU_ONLY,
     PENCIL_TARGET_DEVICE_GPU_THEN_CPU,
     PENCIL_TARGET_DEVICE_CPU_THEN_GPU,
-    PENCIL_TARGET_DEVICE_DYNAMIC
+    PENCIL_TARGET_DEVICE_DYNAMIC,
+	PENCIL_PROFILING_ENABLED = 1<<3
 };
 
 /** Memory allocation. Can be used in the same way, malloc is used.  */
@@ -50,6 +51,9 @@ extern void pencil_init (enum PENCIL_INIT_FLAG flag);
 /** Release PENCIL runtime.  */
 extern void pencil_shutdown (void);
 
+/** Dump statictics to stdout */
+extern void pencil_dump_stats (void);
+extern void pencil_reset_stats (void);
 
 /** smaller of two numbers, 
     potentially called by ppcg generated code */
