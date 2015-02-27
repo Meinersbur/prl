@@ -59,7 +59,7 @@
 #define signd(x) sign((double) (x))
 #define stepf(edge, x) step((float) (edge), (float) (x))
 #define stepd(edge, x) step((double) (edge), (double) (x))
-#define fmodf(x) fmod((float) (x))
+//#define fmodf(x) fmod((float) (x))
 #define fmodd(x) fmod((double) (x))
 #define remainderf(a, b) remainder((float) (a), (float) (b))
 #define remainderd(a, b) remainder((double) (a), (double) (b))

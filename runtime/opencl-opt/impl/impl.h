@@ -50,7 +50,7 @@ extern "C" {
     void __int_opencl_copy_to_host (pencil_cl_mem, size_t, void *);
     void *__int_pencil_alloc (size_t);
     void __int_pencil_free (void *);
-    void __int_pencil_init (int n_devices, const cl_device_type * devices, bool profiling_enabled);
+    void __int_pencil_init (int n_devices, const cl_device_type * devices, bool cpu_profiling_enabled, bool gpu_profiling_enabled, bool blocking);
     void __int_pencil_shutdown  (bool print_stats_on_release);
     void __int_opencl_set_kernel_arg (pencil_cl_kernel, cl_uint, size_t,
                                       const void *, int);

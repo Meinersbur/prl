@@ -59,8 +59,8 @@ float signf(float x) __attribute__((const));
 double signd(double x) __attribute__((const));
 float stepf(float edge, float x) __attribute__((const));
 double stepd(double edge, double x) __attribute__((const));
-float fmodf(float x) __attribute__((const));
-double fmodd(double x) __attribute__((const));
+//float fmodf(float x) __attribute__((const)); // GCC: warning: conflicting types for built-in function 'fmodf
+//double fmodd(double x, double y) __attribute__((const)); // wrong prototype
 float remainderf(float a, float b) __attribute__((const));
 double remainderd(double a, double b) __attribute__((const));
 float remquof(float x, float y, int* quo) __attribute__((const));

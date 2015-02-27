@@ -56,7 +56,7 @@ static inline float __attribute__((const, always_inline)) signf(float x) { if(is
 static inline double __attribute__((const, always_inline)) signd(double x) { if(isnan(x)) return (double)0.0; if (x>(double)0.0) return (double)1.0; if (x<(double)0.0) return (double)-1.0; return copysign(x,(double)0.0); }
 static inline float __attribute__((const, always_inline)) stepf(float edge, float x) { return x<edge ? (float)0.0 : (float)1.0; }
 static inline double __attribute__((const, always_inline)) stepd(double edge, double x) { return x<edge ? (double)0.0 : (double)1.0; }
-#define fmodd fmod
+//#define fmodd fmod
 #define remainderd remainder
 #define remquod remquo
 #define fmad fma

@@ -35,6 +35,9 @@ static const char * CPU_TARGET_DEVICE = "cpu";
 static const char * GPU_CPU_TARGET_DEVICE = "gpu_cpu";
 static const char * CPU_GPU_TARGET_DEVICE = "cpu_gpu";
 static const char * PENCIL_PROFILING = "PENCIL_PROFILING";
+static const char * PENCIL_CPU_PROFILING = "PENCIL_CPU_PROFILING";
+static const char * PENCIL_GPU_PROFILING = "PENCIL_GPU_PROFILING";
+static const char * PENCIL_BLOCKING = "PENCIL_BLOCKING";
 
 pencil_cl_program opencl_create_program_from_file (const char *filename,
                                                    const char *opts)
@@ -124,30 +127,36 @@ enum PENCIL_INIT_FLAG check_environment ()
 void pencil_init (enum PENCIL_INIT_FLAG flag)
 {
 	bool profiling_print =  getenv(PENCIL_PROFILING);
-	bool profiling_enabled = profiling_print | (flag&PENCIL_PROFILING_ENABLED);
+	bool cpu_profiling_print = profiling_print || getenv(PENCIL_CPU_PROFILING);
+	bool gpu_profiling_print = profiling_print || getenv(PENCIL_GPU_PROFILING);
 
+	bool cpu_profiling_enabled = cpu_profiling_print || (flag&PENCIL_CPU_PROFILING_ENABLED);
+	bool gpu_profiling_enabled = gpu_profiling_print || (flag&PENCIL_GPU_PROFILING_ENABLED);
+	bool blocking_enabled = getenv(PENCIL_BLOCKING) || (flag&PENCIL_BLOCKING_ENABLED);
+
+	enum PENCIL_INIT_FLAG device_flag = flag & (PENCIL_TARGET_DEVICE_GPU_ONLY | PENCIL_TARGET_DEVICE_CPU_ONLY | PENCIL_TARGET_DEVICE_GPU_THEN_CPU | PENCIL_TARGET_DEVICE_CPU_THEN_GPU | PENCIL_TARGET_DEVICE_DYNAMIC);
     static const cl_device_type gpu_only[] = {CL_DEVICE_TYPE_GPU};
     static const cl_device_type cpu_only[] = {CL_DEVICE_TYPE_CPU};
     static const cl_device_type gpu_cpu[] = {CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_CPU};
     static const cl_device_type cpu_gpu[] = {CL_DEVICE_TYPE_CPU, CL_DEVICE_TYPE_GPU};
-    if (flag == PENCIL_TARGET_DEVICE_DYNAMIC)
+    if (device_flag == PENCIL_TARGET_DEVICE_DYNAMIC)
     {
-        flag = check_environment ();
+    	device_flag = check_environment ();
     }
-    switch (flag)
+    switch (device_flag)
     {
-        case PENCIL_TARGET_DEVICE_GPU_ONLY: return __int_pencil_init (1, gpu_only, profiling_enabled);
-        case PENCIL_TARGET_DEVICE_CPU_ONLY: return __int_pencil_init (1, cpu_only, profiling_enabled);
-        case PENCIL_TARGET_DEVICE_GPU_THEN_CPU: return __int_pencil_init (2, gpu_cpu, profiling_enabled);
-        case PENCIL_TARGET_DEVICE_CPU_THEN_GPU: return __int_pencil_init (2, cpu_gpu, profiling_enabled);
-        case PENCIL_TARGET_DEVICE_DYNAMIC: return __int_pencil_init (0, NULL, profiling_enabled);
+        case PENCIL_TARGET_DEVICE_GPU_ONLY: return __int_pencil_init (1, gpu_only, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
+        case PENCIL_TARGET_DEVICE_CPU_ONLY: return __int_pencil_init (1, cpu_only, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
+        case PENCIL_TARGET_DEVICE_GPU_THEN_CPU: return __int_pencil_init (2, gpu_cpu, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
+        case PENCIL_TARGET_DEVICE_CPU_THEN_GPU: return __int_pencil_init (2, cpu_gpu, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
+        case PENCIL_TARGET_DEVICE_DYNAMIC: return __int_pencil_init (0, NULL, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
         default: assert(0);
     }
 }
 
 void pencil_shutdown ()
 {
-	bool profiling_print =  getenv(PENCIL_PROFILING);
+	bool profiling_print =  getenv(PENCIL_PROFILING) || getenv(PENCIL_CPU_PROFILING) || getenv(PENCIL_GPU_PROFILING);
     return __int_pencil_shutdown (profiling_print);
 }
 
@@ -173,3 +182,4 @@ void pencil_dump_stats (void) {
 void pencil_reset_stats (void) {
 	__int_pencil_reset_stats();
 }
+
