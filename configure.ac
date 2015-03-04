@@ -1,13 +1,13 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.69])
+AC_PREREQ([2.68])
 AC_INIT([pencil-driver], [0.0], [carp-pencil@imperial.ac.uk])
 AC_CONFIG_MACRO_DIR([m4])
 
 # Automake
 AC_CONFIG_AUX_DIR([build-aux])
-AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects])
+AM_INIT_AUTOMAKE([1.11 -Wall foreign subdir-objects])
 AM_MAINTAINER_MODE([enable])
 
 # Programs

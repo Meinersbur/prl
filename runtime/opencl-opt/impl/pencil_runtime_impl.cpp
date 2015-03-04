@@ -139,6 +139,7 @@ static common_duration_t median_ms(const std::vector<T> &vec) {
 class variation_percent_t {
 public:
 	double ratio;
+	variation_percent_t() : ratio(0) {} // No variation ctor
 	variation_percent_t(double ratio) :ratio(ratio) {}
 };
 
@@ -151,6 +152,10 @@ static double sqr(double val) { return val*val; }
 
 template<typename T>
 static variation_percent_t variation_percent(const std::vector<T> &vec) {
+	auto n = vec.size();
+	if (n==0)
+		return variation_percent_t();
+
 	T sum = T::zero();
 	double sqrsum = 0;
 	for (auto x : vec) {
@@ -158,8 +163,9 @@ static variation_percent_t variation_percent(const std::vector<T> &vec) {
 		sqrsum += sqr(x.count());
 	}
 
-	auto n = vec.size();
 	auto avg = static_cast<double>(sum.count())/n;
+	if (avg==0)
+		return variation_percent_t();
 	auto var = sqrsum/n - sqr(avg);
 	return variation_percent_t(sqrt(var)/avg);
 }
@@ -616,6 +622,10 @@ public:
     stopwatch get_overhead_stopwatch() {
 		return stopwatch(accumulated_overhead_time, cpu_profiling_enabled);
 	}
+
+    stopwatch get_compilation_stopwatch() {
+		return stopwatch(accumulated_compilation_time, cpu_profiling_enabled);
+	}
 	
 	stopwatch get_compute_stopwatch() {
 		return stopwatch(accumulated_compute_time, cpu_profiling_enabled);
@@ -899,6 +909,7 @@ public:
 		accumulated_copy_to_host_time = cpu_duration_t::zero();
 		accumulated_compute_time = cpu_duration_t::zero();
 		accumulated_waiting_time = cpu_duration_t::zero();
+		accumulated_compilation_time = cpu_duration_t::zero();
 		accumulated_overhead_time = cpu_duration_t::zero();
 
 		accumulated_gpu_copy_to_device_time = gpu_duration_t::zero();
@@ -1072,6 +1083,7 @@ pencil_cl_program __int_opencl_create_program_from_string (const char *program,
 
 void __int_opencl_release_program (pencil_cl_program program)
 {
+	 auto wtch = runtime::get_session ()->get_overhead_stopwatch();
     runtime::get_session ()->release_program (program);
 }
 
@@ -1276,6 +1288,9 @@ void __int_print_timings() {
 }
 
 void __int_reset_timings() {
+	//auto session = runtime::get_session();
+	//session->reset_stats();
+
 	durations.clear();
 	accumulated_compilation_time.clear();
 	accumulated_overhead_time.clear();
