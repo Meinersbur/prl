@@ -30,6 +30,9 @@
 #include <tuple>
 #include <algorithm>
 #include <functional>
+#include <iomanip>
+#include "../../pencil_runtime.h"
+
 
 #ifdef THREAD_SAFE
 #include<mutex>
@@ -57,14 +60,25 @@ void die (const char * error)
     exit(ERROR_CODE);
 }
 
-// host_stopwatch
+
+typedef typename std::chrono::steady_clock::time_point::duration cpu_duration_t;
+typedef typename std::chrono::duration<cl_long, std::nano> gpu_duration_t;
+typedef std::chrono::duration<double, std::milli> common_duration_t;
+
+template<typename T, typename P>
+std::ostream& operator<<(std::ostream& os, std::chrono::duration<T,P> dt) {
+	auto ms = std::chrono::duration_cast<common_duration_t>(dt);
+	os << std::setw(8) <<  std::fixed << std::setprecision(3) << ms.count() << " ms";
+	return os;
+}
+
 class stopwatch {
 public:
-	typedef typename std::chrono::high_resolution_clock::time_point::duration duration_t;
-
-private:
-	typedef typename std::chrono::high_resolution_clock::time_point::time_point timepoint_t;
+	typedef typename std::chrono::steady_clock::time_point::duration duration_t;
+	typedef typename std::chrono::steady_clock::time_point::time_point timepoint_t;
+	static_assert(std::chrono::steady_clock::is_steady, "Monotonic clock required");
 	
+private:
 	bool enabled;
 	duration_t *counter;
 	timepoint_t start;
@@ -76,14 +90,14 @@ public:
 	
 	stopwatch(duration_t &counter, bool enabled) : enabled(enabled), counter(&counter) {
 		if (enabled)
-			start = std::chrono::high_resolution_clock::now();
+			start = std::chrono::steady_clock::now();
 	}
 	
 	~stopwatch() {
 		if (!enabled)
 			return; 
 		
-		auto stop = std::chrono::high_resolution_clock::now();
+		auto stop = std::chrono::steady_clock::now();
 		auto duration = (stop - start);
 		*counter += duration;
 	}
@@ -104,6 +118,52 @@ public:
 		return *this;
 	}
 };
+
+template<typename T>
+static common_duration_t median_ms(const std::vector<T> &vec) {
+	auto cpy = vec;
+	std::sort(cpy.begin(), cpy.end());
+	auto len = cpy.size();
+	if (len % 2 == 1) {
+		return std::chrono::duration_cast<common_duration_t>(cpy.at(len / 2));
+	}
+
+	return std::chrono::duration_cast<common_duration_t>(cpy.at(len/2-1))
+			+ std::chrono::duration_cast<common_duration_t>(cpy.at(len/2)/2);
+}
+
+
+
+
+
+class variation_percent_t {
+public:
+	double ratio;
+	variation_percent_t(double ratio) :ratio(ratio) {}
+};
+
+static std::ostream& operator<<(std::ostream& os, variation_percent_t var) {
+	os << "\u00B1" << std::setw(5) << std::fixed << std::setprecision(2) << (100*var.ratio) << "%";
+	return os;
+}
+
+static double sqr(double val) { return val*val; }
+
+template<typename T>
+static variation_percent_t variation_percent(const std::vector<T> &vec) {
+	T sum = T::zero();
+	double sqrsum = 0;
+	for (auto x : vec) {
+		sum += x;
+		sqrsum += sqr(x.count());
+	}
+
+	auto n = vec.size();
+	auto avg = static_cast<double>(sum.count())/n;
+	auto var = sqrsum/n - sqr(avg);
+	return variation_percent_t(sqrt(var)/avg);
+}
+
 
 
 bool __int_gpu_profiling_enabled();
@@ -489,18 +549,21 @@ class session
     bool gpu_profiling_enabled;
     bool blocking;
 
-	stopwatch::duration_t accumulated_overhead_time;
-	stopwatch::duration_t accumulated_copy_to_device_time;
-	stopwatch::duration_t accumulated_copy_to_host_time;
-	stopwatch::duration_t accumulated_compute_time;
-	stopwatch::duration_t accumulated_waiting_time;
-	
-	std::vector<cl_event> pending_events;
-	uint64_t accumulated_gpu_copy_to_device_time;
-	uint64_t accumulated_gpu_copy_to_host_time;
-	uint64_t accumulated_gpu_compute_time;
-	uint64_t accumulated_gpu_unused_time;
-	uint64_t accumulated_gpu_working_time;
+    std::vector<cl_event> pending_events;
+
+public: // Hack for the moment to avoid writing a lot of getters
+	cpu_duration_t accumulated_overhead_time;
+	cpu_duration_t accumulated_compilation_time;
+	cpu_duration_t accumulated_copy_to_device_time;
+	cpu_duration_t accumulated_copy_to_host_time;
+	cpu_duration_t accumulated_compute_time;
+	cpu_duration_t accumulated_waiting_time;
+
+	gpu_duration_t accumulated_gpu_copy_to_device_time;
+	gpu_duration_t accumulated_gpu_copy_to_host_time;
+	gpu_duration_t accumulated_gpu_compute_time;
+	gpu_duration_t accumulated_gpu_unused_time;
+	gpu_duration_t accumulated_gpu_working_time;
 
 public:
     session (int n_devices, const cl_device_type * devices, bool cpu_profiling_enabled, bool gpu_profiling_enabled, bool blocking)
@@ -565,14 +628,14 @@ public:
 
     pencil_cl_program create_or_get_program (const char *path, const char *opts)
     {
-		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
+		stopwatch wtch(accumulated_compilation_time, cpu_profiling_enabled);
 
         return programs.get_program (path, opts, context, device);
     }
 
     pencil_cl_program create_or_get_program (const char *program, size_t size, const char *opts)
     {
-		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
+		stopwatch wtch(accumulated_compilation_time, cpu_profiling_enabled);
 
         return programs.get_program (program, size, opts, context, device);
     }
@@ -665,15 +728,15 @@ public:
     }
 
     typedef std::tuple<cl_ulong,cl_ulong,cl_command_type> tuple_t;
-    void accumulate_durations(const std::vector<tuple_t> &exec_periods, const std::function<bool(const tuple_t&)> &filter, cl_ulong start_queing, cl_ulong &accumulated_working, cl_ulong &accumulated_idle) {
+    void accumulate_durations(const std::vector<tuple_t> &exec_periods, const std::function<bool(const tuple_t&)> &filter, cl_ulong start_queing, gpu_duration_t &accumulated_working, gpu_duration_t &accumulated_idle) {
     	cl_ulong prev_end;
     	cl_ulong last_end;
     	cl_ulong last_filtered_end;
       		bool first = true;
         	for (auto const &p : exec_periods) {
-        		auto &start = std::get<0>(p);
-        		auto &end = std::get<1>(p);
-        		auto &cat = std::get<2>(p);
+        		auto start = std::get<0>(p);
+        		auto end = std::get<1>(p);
+        		auto cat = std::get<2>(p);
         		if (first) {
         			prev_end = start;
         			first = false;
@@ -688,8 +751,8 @@ public:
         			// Case 1: |<- prev ->|  |<- cur ->|
         			assert(start <= end);
 
-        			auto cur_duration = end - start;
-        			auto unused_duration = start - prev_end;
+        			auto cur_duration = gpu_duration_t(end) - gpu_duration_t(start);
+        			auto unused_duration = gpu_duration_t(start) - gpu_duration_t(prev_end);
 
         			accumulated_working += cur_duration;
         			accumulated_idle += unused_duration;
@@ -705,14 +768,14 @@ public:
         			assert(start <= prev_end);
         			assert(prev_end <= end);
 
-        			auto cur_duration = end - prev_end;
+        			auto cur_duration = gpu_duration_t(end) - gpu_duration_t(prev_end);
         			accumulated_working += cur_duration;
 
         			prev_end = end;
         		}
         	}
 
-        	accumulated_idle += (last_filtered_end - last_end);
+        	accumulated_idle += gpu_duration_t(last_filtered_end) - gpu_duration_t(last_end);
     }
 
     void wait_pending() {
@@ -785,7 +848,7 @@ public:
     	std::sort(exec_periods.begin(), exec_periods.end(), [](const tuple_t &x, const tuple_t &y) -> int { return std::get<0>(x) < std::get<0>(y); } );
 
     	accumulate_durations(exec_periods, [](const tuple_t &p)->bool { return true; }, start_queing, accumulated_gpu_working_time, accumulated_gpu_unused_time);
-    	cl_ulong dummy;
+    	gpu_duration_t dummy;
        	accumulate_durations(exec_periods, [](const tuple_t &p)->bool { return std::get<2>(p) == CL_COMMAND_NDRANGE_KERNEL ||  std::get<2>(p) == CL_COMMAND_TASK || std::get<2>(p) == CL_COMMAND_NATIVE_KERNEL; }, start_queing, accumulated_gpu_compute_time, dummy);
        	accumulate_durations(exec_periods, [](const tuple_t &p)->bool { return std::get<2>(p) == CL_COMMAND_WRITE_BUFFER || std::get<2>(p) == CL_COMMAND_WRITE_IMAGE || std::get<2>(p) == CL_COMMAND_MAP_BUFFER|| std::get<2>(p) == CL_COMMAND_MAP_IMAGE; }, start_queing, accumulated_gpu_copy_to_device_time, dummy);
        	accumulate_durations(exec_periods, [](const tuple_t &p)->bool { return std::get<2>(p) == CL_COMMAND_READ_BUFFER || std::get<2>(p) == CL_COMMAND_READ_IMAGE || std::get<2>(p) == CL_COMMAND_UNMAP_MEM_OBJECT;  }, start_queing, accumulated_gpu_copy_to_host_time, dummy);
@@ -793,7 +856,7 @@ public:
     }
 
     void dump_stats() {
-    	auto cpu_total = accumulated_copy_to_device_time + accumulated_copy_to_host_time + accumulated_compute_time + accumulated_overhead_time+accumulated_waiting_time;
+    	auto cpu_total = accumulated_copy_to_device_time + accumulated_copy_to_host_time + accumulated_compute_time  + accumulated_compilation_time + accumulated_overhead_time+accumulated_waiting_time;
     	auto gpu_total = accumulated_gpu_working_time + accumulated_gpu_unused_time;
 
     	std::cerr << "===============================================================================\n";
@@ -803,24 +866,25 @@ public:
 			std::cerr << "Non-blocking implementation\n";
     	if (cpu_profiling_enabled) {
 			std::cerr << "CPU:\n";
-			std::cerr << "Copy-to-device: " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_copy_to_device_time).count() << " ms\n";
-			std::cerr << "Compute:        " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_compute_time).count() << " ms\n";
-			std::cerr << "Copy-to-host:   " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_copy_to_host_time).count() << " ms\n";
-			std::cerr << "Waiting:        " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_waiting_time).count() << " ms\n";
-			std::cerr << "Overhead:       " << std::chrono::duration_cast<std::chrono::milliseconds>(accumulated_overhead_time).count() << " ms\n";
-			std::cerr << "Total:          " << std::chrono::duration_cast<std::chrono::milliseconds>(cpu_total).count() << " ms\n";
+			std::cerr << "Copy-to-device: " << accumulated_copy_to_device_time << "\n";
+			std::cerr << "Compute:        " << accumulated_compute_time << "\n";
+			std::cerr << "Copy-to-host:   " << accumulated_copy_to_host_time << "\n";
+			std::cerr << "Waiting:        " << accumulated_waiting_time << "\n";
+			std::cerr << "Compilation:    " << accumulated_compilation_time << "\n";
+			std::cerr << "Overhead:       " << accumulated_overhead_time << "\n";
+			std::cerr << "Total:          " << cpu_total << "\n";
     	}
     	if (cpu_profiling_enabled && gpu_profiling_enabled) {
 			std::cerr << "\n";
     	}
     	if (gpu_profiling_enabled) {
 			std::cerr << "GPU:\n";
-			std::cerr << "Copy-to-device: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_copy_to_device_time)).count() << " ms\n";
-			std::cerr << "Compute:        " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_compute_time)).count() << " ms\n";
-			std::cerr << "Copy-to-host:   " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_copy_to_host_time)).count() << " ms\n";
-			std::cerr << "Idle:           " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_unused_time)).count() << " ms\n";
-			std::cerr << "Working:        " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(accumulated_gpu_working_time)).count() << " ms\n";
-			std::cerr << "Total:          " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(gpu_total)).count() << " ms\n";
+			std::cerr << "Copy-to-device: " << accumulated_gpu_copy_to_device_time << "\n";
+			std::cerr << "Compute:        " << accumulated_gpu_compute_time << "\n";
+			std::cerr << "Copy-to-host:   " << accumulated_gpu_copy_to_host_time << "\n";
+			std::cerr << "Idle:           " << accumulated_gpu_unused_time << "\n";
+			std::cerr << "Working:        " << accumulated_gpu_working_time << "\n";
+			std::cerr << "Total:          " << gpu_total << "\n";
 		}
     	if (!cpu_profiling_enabled && !gpu_profiling_enabled) {
 			std::cerr << "Profiling disabled; cannot print profiling result\n";
@@ -831,17 +895,17 @@ public:
 	}
 	
 	void reset_stats() {
-		accumulated_copy_to_device_time = accumulated_copy_to_device_time.zero();
-		accumulated_copy_to_host_time = accumulated_copy_to_host_time.zero();
-		accumulated_compute_time = accumulated_compute_time.zero();
-		accumulated_waiting_time = accumulated_waiting_time.zero();
-		accumulated_overhead_time = accumulated_overhead_time.zero();
+		accumulated_copy_to_device_time = cpu_duration_t::zero();
+		accumulated_copy_to_host_time = cpu_duration_t::zero();
+		accumulated_compute_time = cpu_duration_t::zero();
+		accumulated_waiting_time = cpu_duration_t::zero();
+		accumulated_overhead_time = cpu_duration_t::zero();
 
-		accumulated_gpu_copy_to_device_time = 0;
-		accumulated_gpu_compute_time = 0;
-		accumulated_gpu_copy_to_host_time= 0;
-		accumulated_gpu_unused_time = 0;
-		accumulated_gpu_working_time = 0;
+		accumulated_gpu_copy_to_device_time = gpu_duration_t::zero();
+		accumulated_gpu_compute_time = gpu_duration_t::zero();
+		accumulated_gpu_copy_to_host_time= gpu_duration_t::zero();
+		accumulated_gpu_unused_time = gpu_duration_t::zero();
+		accumulated_gpu_working_time = gpu_duration_t::zero();
 	}
 };
 
@@ -918,11 +982,11 @@ class runtime
     void check_session (int n_devices, const cl_device_type * devices, bool cpu_profiling_enabled, bool gpu_profiling_enabled, bool blocking)
     {
     	auto session = get_session();
-        if ((n_devices != 0 && !check_session_settings(n_devices, devices)) ||
-        		session->is_cpu_profiling_enabled() != cpu_profiling_enabled ||
-				session->is_gpu_profiling_enabled() != gpu_profiling_enabled ||
-				session->is_blocking() != blocking)
-        {
+        if ((n_devices != 0 && !check_session_settings(n_devices, devices))
+        		//|| session->is_cpu_profiling_enabled() != cpu_profiling_enabled
+				//|| session->is_gpu_profiling_enabled() != gpu_profiling_enabled
+				//|| session->is_blocking() != blocking
+				) {
             std::cerr << "Cannot reinitialize existing session with different settings. "
               << "Use PENCIL_TARGET_DEVICE_DYNAMIC for consecutive pencil_init calls to use the existing settings."
               << std::endl;
@@ -1141,4 +1205,153 @@ bool __int_gpu_profiling_enabled() {
 bool __int_blocking_enabled() {
 	auto session = runtime::get_session();
 	return session->is_blocking();
+}
+
+
+
+static bool active=false;
+static stopwatch::timepoint_t start;
+
+static std::vector<cpu_duration_t> durations;
+static std::vector<cpu_duration_t> accumulated_compilation_time;
+static std::vector<cpu_duration_t> accumulated_overhead_time;
+static std::vector<cpu_duration_t> accumulated_copy_to_device_time;
+static std::vector<cpu_duration_t> accumulated_copy_to_host_time;
+static std::vector<cpu_duration_t> accumulated_compute_time;
+static std::vector<stopwatch::duration_t> accumulated_waiting_time;
+
+static std::vector<gpu_duration_t> accumulated_gpu_copy_to_device_time;
+static std::vector<gpu_duration_t> accumulated_gpu_copy_to_host_time;
+static std::vector<gpu_duration_t> accumulated_gpu_compute_time;
+static std::vector<gpu_duration_t> accumulated_gpu_unused_time;
+static std::vector<gpu_duration_t> accumulated_gpu_working_time;
+
+void __int_print_timings() {
+	auto session = runtime::get_session();
+	auto blocking = session->is_blocking();
+	auto cpu_profiling_enabled = session->is_cpu_profiling_enabled();
+	auto gpu_profiling_enabled = session->is_gpu_profiling_enabled();
+
+	std::vector<stopwatch::duration_t> cpu_totals;
+	std::vector<stopwatch::duration_t> duration_wo_compilation;
+	std::vector<gpu_duration_t> gpu_totals;
+	for (auto i = 0; i<durations.size(); ++i) {
+		cpu_totals.push_back(accumulated_copy_to_device_time.at(i) +  accumulated_copy_to_host_time.at(i) + accumulated_compute_time.at(i) + accumulated_compilation_time.at(i)  + accumulated_overhead_time.at(i) +accumulated_waiting_time.at(i));
+		duration_wo_compilation.push_back(durations.at(i) - accumulated_compilation_time.at(i));
+		gpu_totals.push_back(accumulated_gpu_working_time.at(i)+accumulated_gpu_unused_time.at(i));
+	}
+
+	std::cerr << "===============================================================================\n";
+	if (blocking)
+		std::cerr << "Blocking implementation\n";
+	else
+		std::cerr << "Non-blocking implementation\n";
+		std::cerr << "Duration:       " << median_ms(durations) << " (" << variation_percent(durations) <<  ")\n";
+	if (cpu_profiling_enabled) {
+		std::cerr << "w/o compilation:" << median_ms(duration_wo_compilation) << " (" << variation_percent(duration_wo_compilation) <<  ")\n";
+		std::cerr << "\n";
+		std::cerr << "CPU:\n";
+		std::cerr << "Copy-to-device: " << median_ms(accumulated_copy_to_device_time) << " (" << variation_percent(accumulated_copy_to_device_time) <<  ")\n";
+		std::cerr << "Compute:        " << median_ms(accumulated_compute_time)  << " (" << variation_percent(accumulated_compute_time) <<  ")\n";
+		std::cerr << "Copy-to-host:   " << median_ms(accumulated_copy_to_host_time)  << " (" << variation_percent(accumulated_copy_to_host_time) <<  ")\n";
+		std::cerr << "Waiting:        " << median_ms(accumulated_waiting_time)  << " (" << variation_percent(accumulated_waiting_time) <<  ")\n";
+		std::cerr << "Compilation:    " << median_ms(accumulated_compilation_time) << " (" << variation_percent(accumulated_compilation_time) <<  ")\n";
+		std::cerr << "Overhead:       " << median_ms(accumulated_overhead_time) << " (" << variation_percent(accumulated_overhead_time) <<  ")\n";
+		std::cerr << "Total:          " << median_ms(cpu_totals) << " (" << variation_percent(cpu_totals) <<  ")\n";
+	}
+	if (cpu_profiling_enabled && gpu_profiling_enabled) {
+		std::cerr << "\n";
+	}
+	if (gpu_profiling_enabled) {
+		std::cerr << "GPU:\n";
+		std::cerr << "Copy-to-device: " << median_ms(accumulated_gpu_copy_to_device_time) << " (" << variation_percent(accumulated_gpu_copy_to_device_time) <<  ")\n";;
+		std::cerr << "Compute:        " << median_ms(accumulated_gpu_compute_time) << " (" << variation_percent(accumulated_gpu_compute_time) <<  ")\n";
+		std::cerr << "Copy-to-host:   " << median_ms(accumulated_gpu_copy_to_host_time) << " (" << variation_percent(accumulated_gpu_copy_to_host_time) <<  ")\n";
+		std::cerr << "Idle:           " << median_ms(accumulated_gpu_unused_time) << " (" << variation_percent(accumulated_gpu_unused_time) <<  ")\n";
+		std::cerr << "Working:        " << median_ms(accumulated_gpu_working_time) << " (" << variation_percent(accumulated_gpu_working_time) <<  ")\n";
+		std::cerr << "Total:          " << median_ms(gpu_totals) << " (" << variation_percent(gpu_totals) <<  ")\n";
+	}
+	std::cerr << "===============================================================================\n";
+	std::cerr << std::flush;
+}
+
+void __int_reset_timings() {
+	durations.clear();
+	accumulated_compilation_time.clear();
+	accumulated_overhead_time.clear();
+	accumulated_copy_to_device_time.clear();
+	accumulated_copy_to_host_time.clear();
+	accumulated_compute_time.clear();
+	accumulated_waiting_time.clear();
+
+	accumulated_gpu_copy_to_device_time.clear();
+	accumulated_gpu_copy_to_host_time.clear();
+	accumulated_gpu_compute_time.clear();
+	accumulated_gpu_unused_time.clear();
+	accumulated_gpu_working_time.clear();
+}
+
+void __int_pencil_timing_start() {
+	assert(!active);
+	auto session = runtime::get_session();
+	session->reset_stats();
+
+	active = true;
+	start = std::chrono::steady_clock::now();
+}
+
+void __int_pencil_timing_stop() {
+	assert(active);
+	auto stop = std::chrono::steady_clock::now();
+	active = false;
+
+	auto duration = stop - start;
+	assert(duration>=duration.zero());
+	if (duration<duration.zero())
+		duration = duration.zero();
+	auto session = runtime::get_session();
+
+	durations.push_back(duration);
+	accumulated_compilation_time.push_back(session->accumulated_compilation_time);
+	accumulated_overhead_time.push_back(session->accumulated_overhead_time);
+	accumulated_copy_to_device_time.push_back(session->accumulated_copy_to_device_time);
+	accumulated_copy_to_host_time.push_back(session->accumulated_copy_to_host_time);
+	accumulated_compute_time.push_back(session->accumulated_compute_time);
+	accumulated_waiting_time.push_back(session->accumulated_waiting_time);
+
+	accumulated_gpu_copy_to_device_time.push_back(session->accumulated_gpu_copy_to_device_time);
+	accumulated_gpu_copy_to_host_time.push_back(session->accumulated_gpu_copy_to_host_time);
+	accumulated_gpu_compute_time.push_back(session->accumulated_gpu_compute_time);
+	accumulated_gpu_unused_time.push_back(session->accumulated_gpu_unused_time);
+	accumulated_gpu_working_time.push_back(session->accumulated_gpu_working_time);
+
+	session->reset_stats();
+}
+
+
+
+void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PENCIL_INIT_FLAG flags) {
+	assert(timed_func);
+
+	pencil_init(static_cast<PENCIL_INIT_FLAG>(flags | PENCIL_PROFILING_ENABLED));
+	__int_reset_timings();
+
+	// Warmup runs
+	for (auto i = 0; i < 2; ++i) {
+		if (init_callback) (*init_callback)(init_user);
+		(*timed_func)(user);
+		if (finit_callback) (*finit_callback)(finit_user);
+	}
+
+	for (auto i = 0; i < 30; ++i) {
+		if (init_callback) (*init_callback)(init_user);
+		__int_pencil_timing_start();
+		(*timed_func)(user);
+		__int_pencil_timing_stop();
+		if (finit_callback) (*finit_callback)(finit_user);
+	}
+
+	__int_print_timings();
+
+	pencil_shutdown();
 }

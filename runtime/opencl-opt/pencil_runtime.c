@@ -28,6 +28,7 @@
 #include "pencil_int.h"
 #include "pencil_runtime.h"
 #include "impl/impl.h"
+#include "../pencil_runtime.h"
 
 static const char * env_name = "PENCIL_TARGET_DEVICE";
 static const char * GPU_TARGET_DEVICE = "gpu";
@@ -182,4 +183,24 @@ void pencil_dump_stats (void) {
 void pencil_reset_stats (void) {
 	__int_pencil_reset_stats();
 }
+
+
+ void pencil_timing_start(void) {
+	 __int_pencil_timing_start();
+ }
+ void pencil_timing_stop(void) {
+	__int_pencil_timing_stop();
+}
+
+ void pencil_reset_timings(void) {
+	__int_reset_timings();
+}
+ void pencil_dump_timings(void) {
+	 __int_print_timings();
+ }
+
+
+ void pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PENCIL_INIT_FLAG flags) {
+	 	 __int_pencil_timing(timed_func, user, init_callback, init_user, finit_callback, finit_user, flags);
+ }
 

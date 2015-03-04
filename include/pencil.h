@@ -63,4 +63,5 @@
 #include "pencil_compat.h"
 
 #endif /* __PENCIL__ */
+
 #endif /* PENCIL_H */
