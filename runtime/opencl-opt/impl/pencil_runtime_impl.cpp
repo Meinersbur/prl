@@ -837,11 +837,11 @@ public:
 
     		// Check consistency
     		if (!(queued <= start && start <= end)) {
-    			std::cerr << "CL_PROFILING_COMMAND_QUEUED = " << queued << "\n";
-    			std::cerr << "CL_PROFILING_COMMAND_SUBMIT = " << submit << "\n";
-    			std::cerr << "CL_PROFILING_COMMAND_START  = " << start << "\n";
-    			std::cerr << "CL_PROFILING_COMMAND_END    = " << end << "\n";
-    			std::cerr << std::flush;
+    			std::cout << "CL_PROFILING_COMMAND_QUEUED = " << queued << "\n";
+    			std::cout << "CL_PROFILING_COMMAND_SUBMIT = " << submit << "\n";
+    			std::cout << "CL_PROFILING_COMMAND_START  = " << start << "\n";
+    			std::cout << "CL_PROFILING_COMMAND_END    = " << end << "\n";
+    			std::cout << std::flush;
     		}
     		assert(queued <= start);
     		assert(start <= end);
@@ -869,39 +869,39 @@ public:
     	auto cpu_total = accumulated_copy_to_device_time + accumulated_copy_to_host_time + accumulated_compute_time  + accumulated_compilation_time + accumulated_overhead_time+accumulated_waiting_time;
     	auto gpu_total = accumulated_gpu_working_time + accumulated_gpu_unused_time;
 
-    	std::cerr << "===============================================================================\n";
+    	std::cout << "===============================================================================\n";
 		if (blocking)
-			std::cerr << "Blocking implementation\n";
+			std::cout << "Blocking implementation\n";
 		else
-			std::cerr << "Non-blocking implementation\n";
+			std::cout << "Non-blocking implementation\n";
     	if (cpu_profiling_enabled) {
-			std::cerr << "CPU:\n";
-			std::cerr << "Copy-to-device: " << accumulated_copy_to_device_time << "\n";
-			std::cerr << "Compute:        " << accumulated_compute_time << "\n";
-			std::cerr << "Copy-to-host:   " << accumulated_copy_to_host_time << "\n";
-			std::cerr << "Waiting:        " << accumulated_waiting_time << "\n";
-			std::cerr << "Compilation:    " << accumulated_compilation_time << "\n";
-			std::cerr << "Overhead:       " << accumulated_overhead_time << "\n";
-			std::cerr << "Total:          " << cpu_total << "\n";
+			std::cout << "CPU:\n";
+			std::cout << "Copy-to-device: " << accumulated_copy_to_device_time << "\n";
+			std::cout << "Compute:        " << accumulated_compute_time << "\n";
+			std::cout << "Copy-to-host:   " << accumulated_copy_to_host_time << "\n";
+			std::cout << "Waiting:        " << accumulated_waiting_time << "\n";
+			std::cout << "Compilation:    " << accumulated_compilation_time << "\n";
+			std::cout << "Overhead:       " << accumulated_overhead_time << "\n";
+			std::cout << "Total:          " << cpu_total << "\n";
     	}
     	if (cpu_profiling_enabled && gpu_profiling_enabled) {
-			std::cerr << "\n";
+			std::cout << "\n";
     	}
     	if (gpu_profiling_enabled) {
-			std::cerr << "GPU:\n";
-			std::cerr << "Copy-to-device: " << accumulated_gpu_copy_to_device_time << "\n";
-			std::cerr << "Compute:        " << accumulated_gpu_compute_time << "\n";
-			std::cerr << "Copy-to-host:   " << accumulated_gpu_copy_to_host_time << "\n";
-			std::cerr << "Idle:           " << accumulated_gpu_unused_time << "\n";
-			std::cerr << "Working:        " << accumulated_gpu_working_time << "\n";
-			std::cerr << "Total:          " << gpu_total << "\n";
+			std::cout << "GPU:\n";
+			std::cout << "Copy-to-device: " << accumulated_gpu_copy_to_device_time << "\n";
+			std::cout << "Compute:        " << accumulated_gpu_compute_time << "\n";
+			std::cout << "Copy-to-host:   " << accumulated_gpu_copy_to_host_time << "\n";
+			std::cout << "Idle:           " << accumulated_gpu_unused_time << "\n";
+			std::cout << "Working:        " << accumulated_gpu_working_time << "\n";
+			std::cout << "Total:          " << gpu_total << "\n";
 		}
     	if (!cpu_profiling_enabled && !gpu_profiling_enabled) {
-			std::cerr << "Profiling disabled; cannot print profiling result\n";
-			std::cerr << "Set PENCIL_PROFILING=1 (PENCIL_CPU_PROFILING=1 or PENCIL_GPU_PROFILING=1) environment variable to enable.\n";
+			std::cout << "Profiling disabled; cannot print profiling result\n";
+			std::cout << "Set PENCIL_PROFILING=1 (PENCIL_CPU_PROFILING=1 or PENCIL_GPU_PROFILING=1) environment variable to enable.\n";
 		}
-		std::cerr << "===============================================================================\n";
-		std::cerr << std::flush;
+		std::cout << "===============================================================================\n";
+		std::cout << std::flush;
 	}
 	
 	void reset_stats() {
@@ -1244,47 +1244,51 @@ void __int_print_timings() {
 	auto cpu_profiling_enabled = session->is_cpu_profiling_enabled();
 	auto gpu_profiling_enabled = session->is_gpu_profiling_enabled();
 
+	auto n = durations.size();
 	std::vector<stopwatch::duration_t> cpu_totals;
 	std::vector<stopwatch::duration_t> duration_wo_compilation;
 	std::vector<gpu_duration_t> gpu_totals;
-	for (auto i = 0; i<durations.size(); ++i) {
+	for (auto i = 0; i<n; ++i) {
 		cpu_totals.push_back(accumulated_copy_to_device_time.at(i) +  accumulated_copy_to_host_time.at(i) + accumulated_compute_time.at(i) + accumulated_compilation_time.at(i)  + accumulated_overhead_time.at(i) +accumulated_waiting_time.at(i));
 		duration_wo_compilation.push_back(durations.at(i) - accumulated_compilation_time.at(i));
 		gpu_totals.push_back(accumulated_gpu_working_time.at(i)+accumulated_gpu_unused_time.at(i));
 	}
 
-	std::cerr << "===============================================================================\n";
+	std::cout << "===============================================================================\n";
 	if (blocking)
-		std::cerr << "Blocking implementation\n";
+		std::cout << "Blocking implementation\n";
 	else
-		std::cerr << "Non-blocking implementation\n";
-		std::cerr << "Duration:       " << median_ms(durations) << " (" << variation_percent(durations) <<  ")\n";
+		std::cout << "Non-blocking implementation\n";
+	{
+		std::cout << "                " << "     median (relative standard deviation) of " << n << " samples\n";
+		std::cout << "Duration:       " << median_ms(durations) << " (" << variation_percent(durations) <<  ")\n";
+	}
 	if (cpu_profiling_enabled) {
-		std::cerr << "w/o compilation:" << median_ms(duration_wo_compilation) << " (" << variation_percent(duration_wo_compilation) <<  ")\n";
-		std::cerr << "\n";
-		std::cerr << "CPU:\n";
-		std::cerr << "Copy-to-device: " << median_ms(accumulated_copy_to_device_time) << " (" << variation_percent(accumulated_copy_to_device_time) <<  ")\n";
-		std::cerr << "Compute:        " << median_ms(accumulated_compute_time)  << " (" << variation_percent(accumulated_compute_time) <<  ")\n";
-		std::cerr << "Copy-to-host:   " << median_ms(accumulated_copy_to_host_time)  << " (" << variation_percent(accumulated_copy_to_host_time) <<  ")\n";
-		std::cerr << "Waiting:        " << median_ms(accumulated_waiting_time)  << " (" << variation_percent(accumulated_waiting_time) <<  ")\n";
-		std::cerr << "Compilation:    " << median_ms(accumulated_compilation_time) << " (" << variation_percent(accumulated_compilation_time) <<  ")\n";
-		std::cerr << "Overhead:       " << median_ms(accumulated_overhead_time) << " (" << variation_percent(accumulated_overhead_time) <<  ")\n";
-		std::cerr << "Total:          " << median_ms(cpu_totals) << " (" << variation_percent(cpu_totals) <<  ")\n";
+		std::cout << "w/o compilation:" << median_ms(duration_wo_compilation) << " (" << variation_percent(duration_wo_compilation) <<  ")\n";
+		std::cout << "\n";
+		std::cout << "CPU:\n";
+		std::cout << "Copy-to-device: " << median_ms(accumulated_copy_to_device_time) << " (" << variation_percent(accumulated_copy_to_device_time) <<  ")\n";
+		std::cout << "Compute:        " << median_ms(accumulated_compute_time)  << " (" << variation_percent(accumulated_compute_time) <<  ")\n";
+		std::cout << "Copy-to-host:   " << median_ms(accumulated_copy_to_host_time)  << " (" << variation_percent(accumulated_copy_to_host_time) <<  ")\n";
+		std::cout << "Waiting:        " << median_ms(accumulated_waiting_time)  << " (" << variation_percent(accumulated_waiting_time) <<  ")\n";
+		std::cout << "Compilation:    " << median_ms(accumulated_compilation_time) << " (" << variation_percent(accumulated_compilation_time) <<  ")\n";
+		std::cout << "Overhead:       " << median_ms(accumulated_overhead_time) << " (" << variation_percent(accumulated_overhead_time) <<  ")\n";
+		std::cout << "Total:          " << median_ms(cpu_totals) << " (" << variation_percent(cpu_totals) <<  ")\n";
 	}
 	if (cpu_profiling_enabled && gpu_profiling_enabled) {
-		std::cerr << "\n";
+		std::cout << "\n";
 	}
 	if (gpu_profiling_enabled) {
-		std::cerr << "GPU:\n";
-		std::cerr << "Copy-to-device: " << median_ms(accumulated_gpu_copy_to_device_time) << " (" << variation_percent(accumulated_gpu_copy_to_device_time) <<  ")\n";;
-		std::cerr << "Compute:        " << median_ms(accumulated_gpu_compute_time) << " (" << variation_percent(accumulated_gpu_compute_time) <<  ")\n";
-		std::cerr << "Copy-to-host:   " << median_ms(accumulated_gpu_copy_to_host_time) << " (" << variation_percent(accumulated_gpu_copy_to_host_time) <<  ")\n";
-		std::cerr << "Idle:           " << median_ms(accumulated_gpu_unused_time) << " (" << variation_percent(accumulated_gpu_unused_time) <<  ")\n";
-		std::cerr << "Working:        " << median_ms(accumulated_gpu_working_time) << " (" << variation_percent(accumulated_gpu_working_time) <<  ")\n";
-		std::cerr << "Total:          " << median_ms(gpu_totals) << " (" << variation_percent(gpu_totals) <<  ")\n";
+		std::cout << "GPU:\n";
+		std::cout << "Copy-to-device: " << median_ms(accumulated_gpu_copy_to_device_time) << " (" << variation_percent(accumulated_gpu_copy_to_device_time) <<  ")\n";;
+		std::cout << "Compute:        " << median_ms(accumulated_gpu_compute_time) << " (" << variation_percent(accumulated_gpu_compute_time) <<  ")\n";
+		std::cout << "Copy-to-host:   " << median_ms(accumulated_gpu_copy_to_host_time) << " (" << variation_percent(accumulated_gpu_copy_to_host_time) <<  ")\n";
+		std::cout << "Idle:           " << median_ms(accumulated_gpu_unused_time) << " (" << variation_percent(accumulated_gpu_unused_time) <<  ")\n";
+		std::cout << "Working:        " << median_ms(accumulated_gpu_working_time) << " (" << variation_percent(accumulated_gpu_working_time) <<  ")\n";
+		std::cout << "Total:          " << median_ms(gpu_totals) << " (" << variation_percent(gpu_totals) <<  ")\n";
 	}
-	std::cerr << "===============================================================================\n";
-	std::cerr << std::flush;
+	std::cout << "===============================================================================\n";
+	std::cout << std::flush;
 }
 
 void __int_reset_timings() {
@@ -1305,6 +1309,7 @@ void __int_reset_timings() {
 	accumulated_gpu_unused_time.clear();
 	accumulated_gpu_working_time.clear();
 }
+
 
 void __int_pencil_timing_start() {
 	assert(!active);
@@ -1345,20 +1350,21 @@ void __int_pencil_timing_stop() {
 
 
 
-void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PENCIL_INIT_FLAG flags) {
+void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PENCIL_INIT_FLAG flags, int dryruns, int runs) {
 	assert(timed_func);
 
 	pencil_init(static_cast<PENCIL_INIT_FLAG>(flags | PENCIL_PROFILING_ENABLED));
 	__int_reset_timings();
 
 	// Warmup runs
-	for (auto i = 0; i < 2; ++i) {
+	for (auto i = 0; i < dryruns; ++i) {
 		if (init_callback) (*init_callback)(init_user);
 		(*timed_func)(user);
 		if (finit_callback) (*finit_callback)(finit_user);
 	}
 
-	for (auto i = 0; i < 30; ++i) {
+	assert(runs >= 1);
+	for (auto i = 0; i < runs; ++i) {
 		if (init_callback) (*init_callback)(init_user);
 		__int_pencil_timing_start();
 		(*timed_func)(user);

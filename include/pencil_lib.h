@@ -23,6 +23,7 @@
  */
 #ifndef PENCIL_LIB_H
 #define PENCIL_LIB_H
+#include <stdlib.h> // abs(int)
 #include <math.h>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

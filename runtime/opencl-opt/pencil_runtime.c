@@ -39,6 +39,8 @@ static const char * PENCIL_PROFILING = "PENCIL_PROFILING";
 static const char * PENCIL_CPU_PROFILING = "PENCIL_CPU_PROFILING";
 static const char * PENCIL_GPU_PROFILING = "PENCIL_GPU_PROFILING";
 static const char * PENCIL_BLOCKING = "PENCIL_BLOCKING";
+static const char * PENCIL_RUNS = "PENCIL_RUNS";
+static const char * PENCIL_DRY_RUNS = "PENCIL_DRY_RUNS";
 
 pencil_cl_program opencl_create_program_from_file (const char *filename,
                                                    const char *opts)
@@ -201,6 +203,19 @@ void pencil_reset_stats (void) {
 
 
  void pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PENCIL_INIT_FLAG flags) {
-	 	 __int_pencil_timing(timed_func, user, init_callback, init_user, finit_callback, finit_user, flags);
+
+	 int dryruns = 2;
+	 const char *sdryruns = getenv(PENCIL_DRY_RUNS);
+	 if (sdryruns) {
+		 dryruns = strtol(sdryruns,NULL,10);
+	 }
+
+	 int runs = 30;
+	 const char *sruns = getenv(PENCIL_RUNS);
+	 if (sruns) {
+		 runs = strtol(sruns,NULL,10);
+	 }
+
+	 __int_pencil_timing(timed_func, user, init_callback, init_user, finit_callback, finit_user, flags, dryruns, runs);
  }
 
