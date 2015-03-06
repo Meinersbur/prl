@@ -89,17 +89,17 @@ void prl_copy_to_host (prl_cl_mem dev, size_t size, void *host)
     return __int_opencl_copy_to_host (dev, size, host);
 }
 
-void *pencil_alloc (size_t size)
+void *prl_alloc (size_t size)
 {
     return __int_pencil_alloc (size);
 }
 
-void pencil_free (void *ptr)
+void prl_free (void *ptr)
 {
     return __int_pencil_free (ptr);
 }
 
-enum prl_init_flags check_environment ()
+static enum prl_init_flags check_environment ()
 {
     const char * target_device = getenv(env_name);
     if (!target_device)
@@ -125,7 +125,7 @@ enum prl_init_flags check_environment ()
     return PRL_TARGET_DEVICE_DYNAMIC;
 }
 
-void pencil_init (enum prl_init_flags flag)
+void prl_init (enum prl_init_flags flag)
 {
 	bool profiling_print =  getenv(PRL_PROFILING);
 	bool cpu_profiling_print = profiling_print || getenv(PRL_CPU_PROFILING);
@@ -155,7 +155,7 @@ void pencil_init (enum prl_init_flags flag)
     }
 }
 
-void pencil_shutdown ()
+void prl_shutdown ()
 {
 	bool profiling_print =  getenv(PRL_PROFILING) || getenv(PRL_CPU_PROFILING) || getenv(PRL_GPU_PROFILING);
     return __int_pencil_shutdown (profiling_print);
@@ -176,31 +176,31 @@ void prl_launch_kernel (prl_cl_kernel kernel, cl_uint work_dim,
 }
 
 
-void pencil_stats_dump (void) {
+void prl_stats_dump (void) {
 	__int_pencil_dump_stats();
 }
 
-void pencil_stats_reset (void) {
+void prl_stats_reset (void) {
 	__int_pencil_reset_stats();
 }
 
 
- void pencil_timings_start(void) {
+ void prl_timings_start(void) {
 	 __int_pencil_timing_start();
  }
- void pencil_timings_stop(void) {
+ void prl_timings_stop(void) {
 	__int_pencil_timing_stop();
 }
 
- void pencil_timings_reset(void) {
+ void prl(void) {
 	__int_reset_timings();
 }
- void pencil_timings_dump(void) {
+ void prl_timings_dump(void) {
 	 __int_print_timings();
  }
 
 
- void pencil_timings(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user) {
+ void prl_timings(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user) {
 	 int dryruns = 2;
 	 const char *sdryruns = getenv(PRL_DRY_RUNS);
 	 if (sdryruns) {
