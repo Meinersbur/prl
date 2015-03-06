@@ -53,20 +53,20 @@ extern "C" {
     void *__int_pencil_alloc (size_t);
     void __int_pencil_free (void *);
     void __int_pencil_init (int n_devices, const cl_device_type * devices, bool cpu_profiling_enabled, bool gpu_profiling_enabled, bool blocking);
-    void __int_pencil_shutdown  (bool print_stats_on_release);
+    void __int_pencil_shutdown  (bool print_stats_on_release, const char *prefix);
     void __int_opencl_set_kernel_arg (prl_cl_kernel, cl_uint, size_t,
                                       const void *, int);
     void __int_opencl_launch_kernel (prl_cl_kernel, cl_uint, const size_t *,
                                      const size_t *, const size_t *);
 	
-	void __int_pencil_dump_stats();
+	void __int_pencil_dump_stats(const char *prefix);
 	void __int_pencil_reset_stats();
 
 	void __int_print_timings();
 	void __int_reset_timings();
 	void __int_pencil_timing_start();
 	void __int_pencil_timing_stop();
-	void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum prl_init_flags flags, int dryruns, int runs);
+	void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum prl_init_flags flags, int dryruns, int runs, const char *prefix);
 
 #ifdef __cplusplus
 }

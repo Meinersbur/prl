@@ -36,9 +36,12 @@ static const char * CPU_GPU_TARGET_DEVICE = "cpu_gpu";
 static const char * PRL_PROFILING = "PRL_PROFILING";
 static const char * PRL_CPU_PROFILING = "PRL_CPU_PROFILING";
 static const char * PRL_GPU_PROFILING = "PRL_GPU_PROFILING";
+static const char * PRL_PROFILING_PREFIX = "PRL_PROFILING_PREFIX";
 static const char * PRL_BLOCKING = "PRL_BLOCKING";
-static const char * PRL_RUNS = "PRL_RUNS";
-static const char * PRL_DRY_RUNS = "PRL_DRY_RUNS";
+static const char * PRL_TIMINGS_RUNS = "PRL_TIMINGS_RUNS";
+static const char * PRL_TIMINGS_DRY_RUNS = "PRL_TIMINGS_DRY_RUNS";
+static const char * PRL_TIMINGS_PREFIX = "PRL_TIMINGS_PREFIX";
+static const char * PRL_PREFIX = "PRL_PREFIX";
 
 prl_cl_program prl_create_program_from_file (const char *filename,
                                                    const char *opts)
@@ -75,7 +78,7 @@ prl_cl_mem prl_create_device_buffer (cl_mem_flags flags, size_t size,
 }
 
 void prl_release_buffer (prl_cl_mem buffer)
-{;
+{
     return __int_opencl_release_buffer (buffer);
 }
 
@@ -158,7 +161,10 @@ void prl_init (enum prl_init_flags flag)
 void prl_shutdown ()
 {
 	bool profiling_print =  getenv(PRL_PROFILING) || getenv(PRL_CPU_PROFILING) || getenv(PRL_GPU_PROFILING);
-    return __int_pencil_shutdown (profiling_print);
+	const char *prefix = getenv(PRL_PROFILING_PREFIX);
+	if (!prefix)
+		prefix = getenv(PRL_PREFIX);
+    return __int_pencil_shutdown (profiling_print, prefix);
 }
 
 
@@ -177,7 +183,10 @@ void prl_launch_kernel (prl_cl_kernel kernel, cl_uint work_dim,
 
 
 void prl_stats_dump (void) {
-	__int_pencil_dump_stats();
+	const char *prefix = getenv(PRL_PROFILING_PREFIX);
+	if (!prefix)
+		prefix = getenv(PRL_PREFIX);
+	__int_pencil_dump_stats(prefix);
 }
 
 void prl_stats_reset (void) {
@@ -202,16 +211,20 @@ void prl_stats_reset (void) {
 
  void prl_timings(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user) {
 	 int dryruns = 2;
-	 const char *sdryruns = getenv(PRL_DRY_RUNS);
+	 const char *sdryruns = getenv(PRL_TIMINGS_DRY_RUNS);
 	 if (sdryruns) {
 		 dryruns = strtol(sdryruns,NULL,10);
 	 }
 
 	 int runs = 30;
-	 const char *sruns = getenv(PRL_RUNS);
+	 const char *sruns = getenv(PRL_TIMINGS_RUNS);
 	 if (sruns) {
 		 runs = strtol(sruns,NULL,10);
 	 }
 
-	 __int_pencil_timing(timed_func, user, init_callback, init_user, finit_callback, finit_user, PRL_TARGET_DEVICE_DYNAMIC, dryruns, runs);
- }
+	 const char *prefix = getenv(PRL_TIMINGS_PREFIX);
+	 if (!prefix)
+		 prefix = getenv(PRL_PREFIX);
+
+	 __int_pencil_timing(timed_func, user, init_callback, init_user, finit_callback, finit_user, PRL_TARGET_DEVICE_DYNAMIC, dryruns, runs, prefix);
+}

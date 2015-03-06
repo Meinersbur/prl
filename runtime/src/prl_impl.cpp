@@ -23,7 +23,6 @@
 #include <cassert>
 #include <string>
 #include <vector>
-#include <map>
 #include <iostream>
 #include <chrono>
 #include <limits>
@@ -31,6 +30,7 @@
 #include <algorithm>
 #include <functional>
 #include <iomanip>
+#include <unordered_map>
 #include "prl.h"
 #include "ocl_utilities.h"
 
@@ -237,7 +237,7 @@ struct __int_pencil_cl_mem
 class memory_manager
 {
 
-    std::map<void*, prl_cl_mem> cache;
+    std::unordered_map<void*, prl_cl_mem> cache;
     size_t unmanaged_buffer_count;
 
 #ifdef THREAD_SAFE
@@ -375,15 +375,6 @@ public:
 
 };
 
-extern "C" {
-cl_program opencl_build_program_from_file (cl_context ctx, cl_device_id dev,
-                                           const char *filename,
-                                           const char *opencl_options);
-cl_program opencl_build_program_from_string (cl_context ctx, cl_device_id dev,
-                                             const char *filename,
-                                             size_t size,
-                                             const char *opencl_options);
-}
 
 struct __int_pencil_cl_kernel
 {
@@ -397,7 +388,7 @@ private:
     std::string prog_file;
     std::string opts;
     cl_program prog;
-    std::map<std::string, prl_cl_kernel> kernel_name_idx;
+    std::unordered_map<std::string, prl_cl_kernel> kernel_name_idx;
 
     const char * source;
 
@@ -553,26 +544,32 @@ class session
     std::vector<cl_event> pending_events;
 
 public: // Hack for the moment to avoid writing a lot of getters
-	cpu_duration_t accumulated_overhead_time;
-	cpu_duration_t accumulated_compilation_time;
-	cpu_duration_t accumulated_copy_to_device_time;
-	cpu_duration_t accumulated_copy_to_host_time;
-	cpu_duration_t accumulated_compute_time;
-	cpu_duration_t accumulated_waiting_time;
+    cpu_duration_t accumulated_init_time; // clGetPlatformIDs, clGetDeviceIDs, clCreateContext, clCreateCommandQueue
+    cpu_duration_t accumulated_release_time; // clReleaseCommandQueue, clReleaseContext
+    cpu_duration_t accumulated_alloc_time; // clCreateBuffer, clEnqueueMapBuffer, clEnqueueUnmapMemObject
+    cpu_duration_t accumulated_free_time;  // clReleaseMemObject, clEnqueueUnmapMemObject
 
-	gpu_duration_t accumulated_gpu_copy_to_device_time;
-	gpu_duration_t accumulated_gpu_copy_to_host_time;
-	gpu_duration_t accumulated_gpu_compute_time;
+	cpu_duration_t accumulated_overhead_time; // clCreateKernel, clSetKernelArg
+	cpu_duration_t accumulated_compilation_time; // clCreateProgramWithSource, clBuildProgram, clGetProgramBuildInfo
+	cpu_duration_t accumulated_copy_to_device_time; // clEnqueueWriteBuffer, clEnqueueUnmapMemObject
+	cpu_duration_t accumulated_copy_to_host_time; // clEnqueueReadBuffer, clEnqueueMapBuffer
+	cpu_duration_t accumulated_compute_time; // clEnqueueNDRangeKernel
+	cpu_duration_t accumulated_waiting_time; // clFinish
+
+	gpu_duration_t accumulated_gpu_copy_to_device_time; // CL_COMMAND_WRITE_BUFFER, CL_COMMAND_WRITE_IMAGE, CL_COMMAND_MAP_BUFFER, CL_COMMAND_MAP_IMAGE
+	gpu_duration_t accumulated_gpu_copy_to_host_time; // CL_COMMAND_READ_BUFFER, CL_COMMAND_READ_IMAGE, CL_COMMAND_UNMAP_BUFFER, CL_COMMAND_UNMAP_IMAGE
+	gpu_duration_t accumulated_gpu_compute_time; // CL_COMMAND_NDRANGE_KERNEL, CL_COMMAND_TASK, CL_COMMAND_NATIVE_KERNEL
 	gpu_duration_t accumulated_gpu_unused_time;
 	gpu_duration_t accumulated_gpu_working_time;
 
 public:
     session (int n_devices, const cl_device_type * devices, bool cpu_profiling_enabled, bool gpu_profiling_enabled, bool blocking)
 		: cpu_profiling_enabled(cpu_profiling_enabled), gpu_profiling_enabled(gpu_profiling_enabled), blocking(blocking),
-			accumulated_overhead_time(0), accumulated_copy_to_device_time(0), accumulated_copy_to_host_time(0), accumulated_compute_time(0),
+		  accumulated_init_time(0), accumulated_release_time(0), accumulated_alloc_time(0), accumulated_free_time(0),
+		  accumulated_overhead_time(0), accumulated_copy_to_device_time(0), accumulated_copy_to_host_time(0), accumulated_compute_time(0),
 		accumulated_gpu_copy_to_device_time(0), accumulated_gpu_copy_to_host_time(0), accumulated_gpu_compute_time(0),accumulated_gpu_unused_time(0),accumulated_gpu_working_time(0)
     {
-		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
+		stopwatch wtch(accumulated_init_time, cpu_profiling_enabled);
 
         cl_uint num_devices;
         cl_error_code err;
@@ -602,16 +599,28 @@ public:
         assert (queue);
     }
 
-    ~session ()
-    {
-		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
+    void release() {
+		stopwatch wtch(accumulated_release_time, cpu_profiling_enabled);
 
         programs.clear ();
-        cl_error_code err;
-        err = clReleaseCommandQueue (queue);
-        OPENCL_ASSERT (err);
-        err = clReleaseContext (context);
-        OPENCL_ASSERT (err);
+
+        if (queue) {
+        	auto err = clReleaseCommandQueue (queue);
+        	OPENCL_ASSERT (err);
+        }
+
+        if (context) {
+        	auto err = clReleaseContext (context);
+        	OPENCL_ASSERT (err);
+        }
+
+        queue = NULL;
+        context = NULL;
+    }
+
+    ~session ()
+    {
+    	release();
     }
 
     stopwatch get_overhead_stopwatch() {
@@ -625,7 +634,16 @@ public:
 	stopwatch get_compute_stopwatch() {
 		return stopwatch(accumulated_compute_time, cpu_profiling_enabled);
 	}
+
+	stopwatch get_alloc_stopwatch() {
+		return stopwatch(accumulated_alloc_time, cpu_profiling_enabled);
+	}
     
+	stopwatch get_free_stopwatch() {
+		return stopwatch(accumulated_free_time, cpu_profiling_enabled);
+	}
+
+
     cl_device_type get_current_device_type () const
     {
         return current_device_type;
@@ -634,14 +652,12 @@ public:
     prl_cl_program create_or_get_program (const char *path, const char *opts)
     {
 		stopwatch wtch(accumulated_compilation_time, cpu_profiling_enabled);
-
         return programs.get_program (path, opts, context, device);
     }
 
     prl_cl_program create_or_get_program (const char *program, size_t size, const char *opts)
     {
 		stopwatch wtch(accumulated_compilation_time, cpu_profiling_enabled);
-
         return programs.get_program (program, size, opts, context, device);
     }
 
@@ -661,44 +677,38 @@ public:
 
     void *alloc_and_return_host_ptr (size_t size)
     {
-		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
-
+    	stopwatch wtch(accumulated_alloc_time, cpu_profiling_enabled);
         return memory.alloc (context, queue, size);
     }
 
     prl_cl_mem alloc_and_return_dev_ptr (cl_mem_flags flags, size_t size,
                                             void *host_ptr)
     {
-		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
-
+    	stopwatch wtch(accumulated_alloc_time, cpu_profiling_enabled);
         return memory.dev_alloc (context, flags, size, host_ptr, queue);
     }
 
     void free_host_ptr (void *ptr)
     {
-		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
-		
+    	stopwatch wtch(accumulated_free_time, cpu_profiling_enabled);
         memory.free (ptr, queue);
     }
 
     void free_dev_buffer (prl_cl_mem dev)
     {
-		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
-
+		stopwatch wtch(accumulated_free_time, cpu_profiling_enabled);
         memory.dev_free (dev);
     }
 
     void copy_to_device (prl_cl_mem dev, size_t size, void *host)
     {
 		stopwatch wtch(accumulated_copy_to_device_time, cpu_profiling_enabled);
-
         memory.copy_to_device (queue, dev, size, host);
     }
 
     void copy_to_host (prl_cl_mem dev, size_t size, void *host)
     {
 		stopwatch wtch(accumulated_copy_to_host_time, cpu_profiling_enabled);
-
         memory.copy_to_host (queue, dev, size, host);
     }
 
@@ -860,8 +870,11 @@ public:
     	}
     }
 
-    void dump_stats() {
-    	auto cpu_total = accumulated_copy_to_device_time + accumulated_copy_to_host_time + accumulated_compute_time  + accumulated_compilation_time + accumulated_overhead_time+accumulated_waiting_time;
+    void dump_stats(const char *prefix) {
+    	if (!prefix)
+    		prefix = "";
+
+    	auto cpu_total = accumulated_init_time + accumulated_release_time + accumulated_alloc_time + accumulated_free_time + accumulated_copy_to_device_time + accumulated_copy_to_host_time + accumulated_compute_time  + accumulated_compilation_time + accumulated_overhead_time+accumulated_waiting_time;
     	auto gpu_total = accumulated_gpu_working_time + accumulated_gpu_unused_time;
 
     	std::cout << "===============================================================================\n";
@@ -870,36 +883,42 @@ public:
 		else
 			std::cout << "Non-blocking implementation\n";
     	if (cpu_profiling_enabled) {
-			std::cout << "CPU:\n";
-			std::cout << "Copy-to-device: " << accumulated_copy_to_device_time << "\n";
-			std::cout << "Compute:        " << accumulated_compute_time << "\n";
-			std::cout << "Copy-to-host:   " << accumulated_copy_to_host_time << "\n";
-			std::cout << "Waiting:        " << accumulated_waiting_time << "\n";
-			std::cout << "Compilation:    " << accumulated_compilation_time << "\n";
-			std::cout << "Overhead:       " << accumulated_overhead_time << "\n";
-			std::cout << "Total:          " << cpu_total << "\n";
+			std::cout << prefix << "CPU_Copy-to-device: " << accumulated_copy_to_device_time << "\n";
+			std::cout << prefix << "CPU_Compute:        " << accumulated_compute_time << "\n";
+			std::cout << prefix << "CPU_Copy-to-host:   " << accumulated_copy_to_host_time << "\n";
+			std::cout << prefix << "CPU_Waiting:        " << accumulated_waiting_time << "\n";
+			std::cout << prefix << "CPU_Compilation:    " << accumulated_compilation_time << "\n";
+			std::cout << prefix << "CPU_Init:           " << accumulated_init_time << "\n";
+			std::cout << prefix << "CPU_Release:        " << accumulated_release_time << "\n";
+			std::cout << prefix << "CPU_Alloc:          " << accumulated_alloc_time << "\n";
+			std::cout << prefix << "CPU_Free:           " << accumulated_free_time << "\n";
+			std::cout << prefix << "CPU_Overhead:       " << accumulated_overhead_time << "\n";
+			std::cout << prefix << "CPU_Total:          " << cpu_total << "\n";
     	}
     	if (cpu_profiling_enabled && gpu_profiling_enabled) {
 			std::cout << "\n";
     	}
     	if (gpu_profiling_enabled) {
-			std::cout << "GPU:\n";
-			std::cout << "Copy-to-device: " << accumulated_gpu_copy_to_device_time << "\n";
-			std::cout << "Compute:        " << accumulated_gpu_compute_time << "\n";
-			std::cout << "Copy-to-host:   " << accumulated_gpu_copy_to_host_time << "\n";
-			std::cout << "Idle:           " << accumulated_gpu_unused_time << "\n";
-			std::cout << "Working:        " << accumulated_gpu_working_time << "\n";
-			std::cout << "Total:          " << gpu_total << "\n";
+			std::cout << prefix << "GPU_Copy-to-device: " << accumulated_gpu_copy_to_device_time << "\n";
+			std::cout << prefix << "GPU_Compute:        " << accumulated_gpu_compute_time << "\n";
+			std::cout << prefix << "GPU_Copy-to-host:   " << accumulated_gpu_copy_to_host_time << "\n";
+			std::cout << prefix << "GPU_Idle:           " << accumulated_gpu_unused_time << "\n";
+			std::cout << prefix << "GPU_Working:        " << accumulated_gpu_working_time << "\n";
+			std::cout << prefix << "GPU_Total:          " << gpu_total << "\n";
 		}
     	if (!cpu_profiling_enabled && !gpu_profiling_enabled) {
 			std::cout << "Profiling disabled; cannot print profiling result\n";
-			std::cout << "Set PENCIL_PROFILING=1 (PENCIL_CPU_PROFILING=1 or PENCIL_GPU_PROFILING=1) environment variable to enable.\n";
+			std::cout << "Set PRL_PROFILING=1 (PRL_CPU_PROFILING=1 or PRL_GPU_PROFILING=1) environment variable to enable.\n";
 		}
 		std::cout << "===============================================================================\n";
 		std::cout << std::flush;
 	}
 	
 	void reset_stats() {
+		accumulated_init_time = cpu_duration_t::zero();
+		accumulated_release_time = cpu_duration_t::zero();
+		accumulated_alloc_time = cpu_duration_t::zero();
+		accumulated_free_time = cpu_duration_t::zero();
 		accumulated_copy_to_device_time = cpu_duration_t::zero();
 		accumulated_copy_to_host_time = cpu_duration_t::zero();
 		accumulated_compute_time = cpu_duration_t::zero();
@@ -1043,7 +1062,7 @@ public:
         }
     }
 
-    static void release (bool print_stats_on_release)
+    static void release (bool print_stats_on_release, const char *prefix)
     {
         runtime& instance = get_instance ();
 #ifdef THREAD_SAFE
@@ -1056,8 +1075,9 @@ public:
         assert (instance.ref_counter > 0);
         if (--instance.ref_counter == 0)
         {
+        	session->release();
         	if (print_stats_on_release)
-        		session->dump_stats();
+        		session->dump_stats(prefix);
             instance.delete_session ();
         }
     }
@@ -1119,7 +1139,7 @@ void __int_opencl_copy_to_host (prl_cl_mem dev, size_t size, void *host)
 void *__int_pencil_alloc (size_t size)
 {
 #ifdef HOST_ALLOC
-	auto wtch = runtime::get_session ()->get_overhead_stopwatch();
+	auto wtch = runtime::get_session ()->get_alloc_stopwatch();
     return malloc (size);
 #else
     return runtime::get_session ()->alloc_and_return_host_ptr (size);
@@ -1129,7 +1149,7 @@ void *__int_pencil_alloc (size_t size)
 void __int_pencil_free (void *ptr)
 {
 #ifdef HOST_ALLOC
-	auto wtch = runtime::get_session ()->get_overhead_stopwatch();
+	auto wtch = runtime::get_session ()->get_free_stopwatch();
     free (ptr);
 #else
     runtime::get_session ()->free_host_ptr (ptr);
@@ -1141,9 +1161,9 @@ void __int_pencil_init (int n_devices, const cl_device_type * devices, bool cpu_
     runtime::retain (n_devices, devices, cpu_profiling_enabled, gpu_profiling_enabled, blocking);
 }
 
-void __int_pencil_shutdown (bool print_stats_on_release)
+void __int_pencil_shutdown (bool print_stats_on_release, const char *prefix)
 {
-    runtime::release (print_stats_on_release);
+    runtime::release (print_stats_on_release, prefix);
 }
 
 
@@ -1191,8 +1211,8 @@ void __int_opencl_launch_kernel (prl_cl_kernel kernel, cl_uint work_dim,
 	session->add_event(event); // Will release event if non-null
 }
 
-void __int_pencil_dump_stats() {
-	runtime::get_session ()->dump_stats();
+void __int_pencil_dump_stats(const char *prefix) {
+	runtime::get_session ()->dump_stats(prefix);
 }
 
 void __int_pencil_reset_stats() {
@@ -1221,11 +1241,15 @@ static stopwatch::timepoint_t start;
 
 static std::vector<cpu_duration_t> durations;
 static std::vector<cpu_duration_t> accumulated_compilation_time;
-static std::vector<cpu_duration_t> accumulated_overhead_time;
 static std::vector<cpu_duration_t> accumulated_copy_to_device_time;
 static std::vector<cpu_duration_t> accumulated_copy_to_host_time;
 static std::vector<cpu_duration_t> accumulated_compute_time;
-static std::vector<stopwatch::duration_t> accumulated_waiting_time;
+static std::vector<cpu_duration_t> accumulated_waiting_time;
+static std::vector<cpu_duration_t> accumulated_init_time;
+static std::vector<cpu_duration_t> accumulated_release_time;
+static std::vector<cpu_duration_t> accumulated_alloc_time;
+static std::vector<cpu_duration_t> accumulated_free_time;
+static std::vector<cpu_duration_t> accumulated_overhead_time;
 
 static std::vector<gpu_duration_t> accumulated_gpu_copy_to_device_time;
 static std::vector<gpu_duration_t> accumulated_gpu_copy_to_host_time;
@@ -1233,7 +1257,10 @@ static std::vector<gpu_duration_t> accumulated_gpu_compute_time;
 static std::vector<gpu_duration_t> accumulated_gpu_unused_time;
 static std::vector<gpu_duration_t> accumulated_gpu_working_time;
 
-void __int_print_timings() {
+void __int_print_timings(const char *prefix) {
+	if (!prefix)
+		prefix = "";
+
 	auto session = runtime::get_session();
 	auto blocking = session->is_blocking();
 	auto cpu_profiling_enabled = session->is_cpu_profiling_enabled();
@@ -1244,7 +1271,9 @@ void __int_print_timings() {
 	std::vector<stopwatch::duration_t> duration_wo_compilation;
 	std::vector<gpu_duration_t> gpu_totals;
 	for (auto i = 0; i<n; ++i) {
-		cpu_totals.push_back(accumulated_copy_to_device_time.at(i) +  accumulated_copy_to_host_time.at(i) + accumulated_compute_time.at(i) + accumulated_compilation_time.at(i)  + accumulated_overhead_time.at(i) +accumulated_waiting_time.at(i));
+		cpu_totals.push_back(accumulated_copy_to_device_time.at(i) +  accumulated_copy_to_host_time.at(i) + accumulated_compute_time.at(i) + accumulated_compilation_time.at(i)  + accumulated_overhead_time.at(i) +accumulated_waiting_time.at(i)
+				+ accumulated_init_time.at(0) +  accumulated_release_time.at(0) +  accumulated_alloc_time.at(0) +  accumulated_free_time.at(0)
+		);
 		duration_wo_compilation.push_back(durations.at(i) - accumulated_compilation_time.at(i));
 		gpu_totals.push_back(accumulated_gpu_working_time.at(i)+accumulated_gpu_unused_time.at(i));
 	}
@@ -1255,32 +1284,32 @@ void __int_print_timings() {
 	else
 		std::cout << "Non-blocking implementation\n";
 	{
-		std::cout << "                " << "     median (relative standard deviation) of " << n << " samples\n";
-		std::cout << "Duration:       " << median_ms(durations) << " (" << variation_percent(durations) <<  ")\n";
+		std::cout << prefix << "                    " << "     median (relative standard deviation) of " << n << " samples\n";
+		std::cout << prefix << "Duration:           " << median_ms(durations) << " (" << variation_percent(durations) <<  ")\n";
 	}
 	if (cpu_profiling_enabled) {
-		std::cout << "w/o compilation:" << median_ms(duration_wo_compilation) << " (" << variation_percent(duration_wo_compilation) <<  ")\n";
+		std::cout << prefix << "w/o compilation:    " << median_ms(duration_wo_compilation) << " (" << variation_percent(duration_wo_compilation) <<  ")\n";
 		std::cout << "\n";
-		std::cout << "CPU:\n";
-		std::cout << "Copy-to-device: " << median_ms(accumulated_copy_to_device_time) << " (" << variation_percent(accumulated_copy_to_device_time) <<  ")\n";
-		std::cout << "Compute:        " << median_ms(accumulated_compute_time)  << " (" << variation_percent(accumulated_compute_time) <<  ")\n";
-		std::cout << "Copy-to-host:   " << median_ms(accumulated_copy_to_host_time)  << " (" << variation_percent(accumulated_copy_to_host_time) <<  ")\n";
-		std::cout << "Waiting:        " << median_ms(accumulated_waiting_time)  << " (" << variation_percent(accumulated_waiting_time) <<  ")\n";
-		std::cout << "Compilation:    " << median_ms(accumulated_compilation_time) << " (" << variation_percent(accumulated_compilation_time) <<  ")\n";
-		std::cout << "Overhead:       " << median_ms(accumulated_overhead_time) << " (" << variation_percent(accumulated_overhead_time) <<  ")\n";
-		std::cout << "Total:          " << median_ms(cpu_totals) << " (" << variation_percent(cpu_totals) <<  ")\n";
+		std::cout << prefix << "CPU_Copy-to-device: " << median_ms(accumulated_copy_to_device_time) << " (" << variation_percent(accumulated_copy_to_device_time) <<  ")\n";
+		std::cout << prefix << "CPU_Compute:        " << median_ms(accumulated_compute_time)  << " (" << variation_percent(accumulated_compute_time) <<  ")\n";
+		std::cout << prefix << "CPU_Copy-to-host:   " << median_ms(accumulated_copy_to_host_time)  << " (" << variation_percent(accumulated_copy_to_host_time) <<  ")\n";
+		std::cout << prefix << "CPU_Waiting:        " << median_ms(accumulated_waiting_time)  << " (" << variation_percent(accumulated_waiting_time) <<  ")\n";
+		std::cout << prefix << "CPU_Compilation:    " << median_ms(accumulated_compilation_time) << " (" << variation_percent(accumulated_compilation_time) <<  ")\n";
+		std::cout << prefix << "CPU_Init:           " << median_ms(accumulated_init_time) << " (" << variation_percent(accumulated_init_time) <<  ")\n";
+		std::cout << prefix << "CPU_Release:        " << median_ms(accumulated_release_time) << " (" << variation_percent(accumulated_release_time) <<  ")\n";
+		std::cout << prefix << "CPU_Alloc:          " << median_ms(accumulated_alloc_time) << " (" << variation_percent(accumulated_alloc_time) <<  ")\n";
+		std::cout << prefix << "CPU_Free:           " << median_ms(accumulated_free_time) << " (" << variation_percent(accumulated_free_time) <<  ")\n";
+		std::cout << prefix << "CPU_Overhead:       " << median_ms(accumulated_overhead_time) << " (" << variation_percent(accumulated_overhead_time) <<  ")\n";
+		std::cout << prefix << "CPU_Total:          " << median_ms(cpu_totals) << " (" << variation_percent(cpu_totals) <<  ")\n";
 	}
-	if (cpu_profiling_enabled && gpu_profiling_enabled) {
-		std::cout << "\n";
-	}
+	std::cout << "\n";
 	if (gpu_profiling_enabled) {
-		std::cout << "GPU:\n";
-		std::cout << "Copy-to-device: " << median_ms(accumulated_gpu_copy_to_device_time) << " (" << variation_percent(accumulated_gpu_copy_to_device_time) <<  ")\n";;
-		std::cout << "Compute:        " << median_ms(accumulated_gpu_compute_time) << " (" << variation_percent(accumulated_gpu_compute_time) <<  ")\n";
-		std::cout << "Copy-to-host:   " << median_ms(accumulated_gpu_copy_to_host_time) << " (" << variation_percent(accumulated_gpu_copy_to_host_time) <<  ")\n";
-		std::cout << "Idle:           " << median_ms(accumulated_gpu_unused_time) << " (" << variation_percent(accumulated_gpu_unused_time) <<  ")\n";
-		std::cout << "Working:        " << median_ms(accumulated_gpu_working_time) << " (" << variation_percent(accumulated_gpu_working_time) <<  ")\n";
-		std::cout << "Total:          " << median_ms(gpu_totals) << " (" << variation_percent(gpu_totals) <<  ")\n";
+		std::cout << prefix << "GPU_Copy-to-device: " << median_ms(accumulated_gpu_copy_to_device_time) << " (" << variation_percent(accumulated_gpu_copy_to_device_time) <<  ")\n";;
+		std::cout << prefix << "GPU_Compute:        " << median_ms(accumulated_gpu_compute_time) << " (" << variation_percent(accumulated_gpu_compute_time) <<  ")\n";
+		std::cout << prefix << "GPU_Copy-to-host:   " << median_ms(accumulated_gpu_copy_to_host_time) << " (" << variation_percent(accumulated_gpu_copy_to_host_time) <<  ")\n";
+		std::cout << prefix << "GPU_Idle:           " << median_ms(accumulated_gpu_unused_time) << " (" << variation_percent(accumulated_gpu_unused_time) <<  ")\n";
+		std::cout << prefix << "GPU_Working:        " << median_ms(accumulated_gpu_working_time) << " (" << variation_percent(accumulated_gpu_working_time) <<  ")\n";
+		std::cout << prefix << "GPU_Total:          " << median_ms(gpu_totals) << " (" << variation_percent(gpu_totals) <<  ")\n";
 	}
 	std::cout << "===============================================================================\n";
 	std::cout << std::flush;
@@ -1292,11 +1321,15 @@ void __int_reset_timings() {
 
 	durations.clear();
 	accumulated_compilation_time.clear();
-	accumulated_overhead_time.clear();
 	accumulated_copy_to_device_time.clear();
 	accumulated_copy_to_host_time.clear();
 	accumulated_compute_time.clear();
 	accumulated_waiting_time.clear();
+	accumulated_init_time.clear();
+	accumulated_release_time.clear();
+	accumulated_alloc_time.clear();
+	accumulated_free_time.clear();
+	accumulated_overhead_time.clear();
 
 	accumulated_gpu_copy_to_device_time.clear();
 	accumulated_gpu_copy_to_host_time.clear();
@@ -1328,11 +1361,15 @@ void __int_pencil_timing_stop() {
 
 	durations.push_back(duration);
 	accumulated_compilation_time.push_back(session->accumulated_compilation_time);
-	accumulated_overhead_time.push_back(session->accumulated_overhead_time);
 	accumulated_copy_to_device_time.push_back(session->accumulated_copy_to_device_time);
 	accumulated_copy_to_host_time.push_back(session->accumulated_copy_to_host_time);
 	accumulated_compute_time.push_back(session->accumulated_compute_time);
 	accumulated_waiting_time.push_back(session->accumulated_waiting_time);
+	accumulated_init_time.push_back(session->accumulated_init_time);
+	accumulated_release_time.push_back(session->accumulated_release_time);
+	accumulated_alloc_time.push_back(session->accumulated_alloc_time);
+	accumulated_free_time.push_back(session->accumulated_free_time);
+	accumulated_overhead_time.push_back(session->accumulated_overhead_time);
 
 	accumulated_gpu_copy_to_device_time.push_back(session->accumulated_gpu_copy_to_device_time);
 	accumulated_gpu_copy_to_host_time.push_back(session->accumulated_gpu_copy_to_host_time);
@@ -1345,7 +1382,7 @@ void __int_pencil_timing_stop() {
 
 
 
-void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum prl_init_flags flags, int dryruns, int runs) {
+void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum prl_init_flags flags, int dryruns, int runs, const char *prefix) {
 	assert(timed_func);
 
 	prl_init(static_cast<prl_init_flags>(flags | PRL_PROFILING_ENABLED));
@@ -1367,7 +1404,6 @@ void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback
 		if (finit_callback) (*finit_callback)(finit_user);
 	}
 
-	__int_print_timings();
-
+	__int_print_timings(prefix);
 	prl_shutdown();
 }
