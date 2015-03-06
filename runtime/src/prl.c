@@ -25,10 +25,8 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "pencil_int.h"
-#include "pencil_runtime.h"
-#include "impl/impl.h"
-#include "../pencil_runtime.h"
+#include "prl.h"
+#include "prl_impl.h"
 
 static const char * env_name = "PENCIL_TARGET_DEVICE";
 static const char * GPU_TARGET_DEVICE = "gpu";
@@ -101,58 +99,58 @@ void pencil_free (void *ptr)
     return __int_pencil_free (ptr);
 }
 
-enum PENCIL_INIT_FLAG check_environment ()
+enum PRL_INIT_FLAG check_environment ()
 {
     const char * target_device = getenv(env_name);
     if (!target_device)
     {
-        return PENCIL_TARGET_DEVICE_DYNAMIC;
+        return PRL_TARGET_DEVICE_DYNAMIC;
     }
     if (!strcmp (target_device, GPU_TARGET_DEVICE))
     {
-        return PENCIL_TARGET_DEVICE_GPU_ONLY;
+        return PRL_TARGET_DEVICE_GPU_ONLY;
     }
     if (!strcmp (target_device, CPU_TARGET_DEVICE))
     {
-        return PENCIL_TARGET_DEVICE_CPU_ONLY;
+        return PRL_TARGET_DEVICE_CPU_ONLY;
     }
     if (!strcmp (target_device, GPU_CPU_TARGET_DEVICE))
     {
-        return PENCIL_TARGET_DEVICE_GPU_THEN_CPU;
+        return PRL_TARGET_DEVICE_GPU_THEN_CPU;
     }
     if (!strcmp (target_device, CPU_GPU_TARGET_DEVICE))
     {
-        return PENCIL_TARGET_DEVICE_CPU_THEN_GPU;
+        return PRL_TARGET_DEVICE_CPU_THEN_GPU;
     }
-    return PENCIL_TARGET_DEVICE_DYNAMIC;
+    return PRL_TARGET_DEVICE_DYNAMIC;
 }
 
-void pencil_init (enum PENCIL_INIT_FLAG flag)
+void pencil_init (enum PRL_INIT_FLAG flag)
 {
 	bool profiling_print =  getenv(PENCIL_PROFILING);
 	bool cpu_profiling_print = profiling_print || getenv(PENCIL_CPU_PROFILING);
 	bool gpu_profiling_print = profiling_print || getenv(PENCIL_GPU_PROFILING);
 
-	bool cpu_profiling_enabled = cpu_profiling_print || (flag&PENCIL_CPU_PROFILING_ENABLED);
-	bool gpu_profiling_enabled = gpu_profiling_print || (flag&PENCIL_GPU_PROFILING_ENABLED);
-	bool blocking_enabled = getenv(PENCIL_BLOCKING) || (flag&PENCIL_BLOCKING_ENABLED);
+	bool cpu_profiling_enabled = cpu_profiling_print || (flag&PRL_CPU_PROFILING_ENABLED);
+	bool gpu_profiling_enabled = gpu_profiling_print || (flag&PRL_GPU_PROFILING_ENABLED);
+	bool blocking_enabled = getenv(PENCIL_BLOCKING) || (flag&PRL_BLOCKING_ENABLED);
 
-	enum PENCIL_INIT_FLAG device_flag = flag & (PENCIL_TARGET_DEVICE_GPU_ONLY | PENCIL_TARGET_DEVICE_CPU_ONLY | PENCIL_TARGET_DEVICE_GPU_THEN_CPU | PENCIL_TARGET_DEVICE_CPU_THEN_GPU | PENCIL_TARGET_DEVICE_DYNAMIC);
+	enum PRL_INIT_FLAG device_flag = flag & (PRL_TARGET_DEVICE_GPU_ONLY | PRL_TARGET_DEVICE_CPU_ONLY | PRL_TARGET_DEVICE_GPU_THEN_CPU | PRL_TARGET_DEVICE_CPU_THEN_GPU | PRL_TARGET_DEVICE_DYNAMIC);
     static const cl_device_type gpu_only[] = {CL_DEVICE_TYPE_GPU};
     static const cl_device_type cpu_only[] = {CL_DEVICE_TYPE_CPU};
     static const cl_device_type gpu_cpu[] = {CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_CPU};
     static const cl_device_type cpu_gpu[] = {CL_DEVICE_TYPE_CPU, CL_DEVICE_TYPE_GPU};
-    if (device_flag == PENCIL_TARGET_DEVICE_DYNAMIC)
+    if (device_flag == PRL_TARGET_DEVICE_DYNAMIC)
     {
     	device_flag = check_environment ();
     }
     switch (device_flag)
     {
-        case PENCIL_TARGET_DEVICE_GPU_ONLY: return __int_pencil_init (1, gpu_only, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
-        case PENCIL_TARGET_DEVICE_CPU_ONLY: return __int_pencil_init (1, cpu_only, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
-        case PENCIL_TARGET_DEVICE_GPU_THEN_CPU: return __int_pencil_init (2, gpu_cpu, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
-        case PENCIL_TARGET_DEVICE_CPU_THEN_GPU: return __int_pencil_init (2, cpu_gpu, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
-        case PENCIL_TARGET_DEVICE_DYNAMIC: return __int_pencil_init (0, NULL, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
+        case PRL_TARGET_DEVICE_GPU_ONLY: return __int_pencil_init (1, gpu_only, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
+        case PRL_TARGET_DEVICE_CPU_ONLY: return __int_pencil_init (1, cpu_only, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
+        case PRL_TARGET_DEVICE_GPU_THEN_CPU: return __int_pencil_init (2, gpu_cpu, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
+        case PRL_TARGET_DEVICE_CPU_THEN_GPU: return __int_pencil_init (2, cpu_gpu, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
+        case PRL_TARGET_DEVICE_DYNAMIC: return __int_pencil_init (0, NULL, cpu_profiling_enabled, gpu_profiling_enabled, blocking_enabled);
         default: assert(0);
     }
 }
@@ -202,8 +200,7 @@ void pencil_reset_stats (void) {
  }
 
 
- void pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PENCIL_INIT_FLAG flags) {
-
+ void pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PRL_INIT_FLAG flags) {
 	 int dryruns = 2;
 	 const char *sdryruns = getenv(PENCIL_DRY_RUNS);
 	 if (sdryruns) {
@@ -218,4 +215,3 @@ void pencil_reset_stats (void) {
 
 	 __int_pencil_timing(timed_func, user, init_callback, init_user, finit_callback, finit_user, flags, dryruns, runs);
  }
-

@@ -31,19 +31,14 @@
 #include <algorithm>
 #include <functional>
 #include <iomanip>
-#include "../../pencil_runtime.h"
-
+#include "prl.h"
+#include "ocl_utilities.h"
 
 #ifdef THREAD_SAFE
 #include<mutex>
 #endif
 
-#include "impl.h"
-
-extern "C"
-{
-    const char *opencl_error_string(cl_int error);
-}
+#include "prl_impl.h"
 
 
 
@@ -1350,10 +1345,10 @@ void __int_pencil_timing_stop() {
 
 
 
-void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PENCIL_INIT_FLAG flags, int dryruns, int runs) {
+void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PRL_INIT_FLAG flags, int dryruns, int runs) {
 	assert(timed_func);
 
-	pencil_init(static_cast<PENCIL_INIT_FLAG>(flags | PENCIL_PROFILING_ENABLED));
+	prl_init(static_cast<PRL_INIT_FLAG>(flags | PRL_PROFILING_ENABLED));
 	__int_reset_timings();
 
 	// Warmup runs
@@ -1374,5 +1369,5 @@ void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback
 
 	__int_print_timings();
 
-	pencil_shutdown();
+	prl_shutdown();
 }

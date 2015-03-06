@@ -29,6 +29,8 @@
 #include <CL/opencl.h>
 #endif
 
+#include "prl.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -64,7 +66,7 @@ extern "C" {
 	void __int_reset_timings();
 	void __int_pencil_timing_start();
 	void __int_pencil_timing_stop();
-	void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PENCIL_INIT_FLAG flags, int dryruns, int runs);
+	void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PRL_INIT_FLAG flags, int dryruns, int runs);
 
 #ifdef __cplusplus
 }

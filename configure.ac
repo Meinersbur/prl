@@ -7,7 +7,7 @@ AC_CONFIG_MACRO_DIR([m4])
 
 # Automake
 AC_CONFIG_AUX_DIR([build-aux])
-AM_INIT_AUTOMAKE([1.11 -Wall foreign subdir-objects])
+AM_INIT_AUTOMAKE([1.11 -Wall foreign])
 AM_MAINTAINER_MODE([enable])
 
 # Programs
@@ -38,5 +38,7 @@ AC_ARG_ENABLE([thread-safety],
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([include/Makefile])
 AC_CONFIG_FILES([runtime/Makefile])
+AC_CONFIG_FILES([runtime/src/Makefile])
+AC_CONFIG_FILES([runtime/include/Makefile])
 
 AC_OUTPUT

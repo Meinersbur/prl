@@ -7,6 +7,10 @@
 #include <CL/opencl.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Return the OpenCL error string for a given error number.
  */
 const char *opencl_error_string(cl_int error);
@@ -28,5 +32,9 @@ cl_program opencl_build_program_from_string(cl_context ctx, cl_device_id dev,
  */
 cl_program opencl_build_program_from_file(cl_context ctx, cl_device_id dev,
 	const char* filename, const char* opencl_options);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif
