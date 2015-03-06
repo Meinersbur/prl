@@ -104,8 +104,8 @@ extern void prl_launch_kernel (prl_cl_kernel, cl_uint, const size_t *,
 
 
 /** Dump ad-hoc statistics to stdout */
-extern void prl_stats_dump (void);
-extern void prl_stats_reset (void);
+extern void prl_stats_dump(void);
+extern void prl_stats_reset(void);
 
 /* More accurate mesurement with multiple runs */
 extern void prl_timings_start(void);

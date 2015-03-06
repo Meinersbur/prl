@@ -205,7 +205,11 @@ void prl_stats_reset (void) {
 	__int_reset_timings();
 }
  void prl_timings_dump(void) {
-	 __int_print_timings();
+	 const char *prefix = getenv(PRL_TIMINGS_PREFIX);
+	 if (!prefix)
+		 prefix = getenv(PRL_TIMINGS_PREFIX);
+
+	 __int_print_timings(prefix);
  }
 
 

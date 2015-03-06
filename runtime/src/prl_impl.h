@@ -62,7 +62,7 @@ extern "C" {
 	void __int_pencil_dump_stats(const char *prefix);
 	void __int_pencil_reset_stats();
 
-	void __int_print_timings();
+	void __int_print_timings(const char *prefix);
 	void __int_reset_timings();
 	void __int_pencil_timing_start();
 	void __int_pencil_timing_stop();

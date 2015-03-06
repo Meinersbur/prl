@@ -548,7 +548,6 @@ public: // Hack for the moment to avoid writing a lot of getters
     cpu_duration_t accumulated_release_time; // clReleaseCommandQueue, clReleaseContext
     cpu_duration_t accumulated_alloc_time; // clCreateBuffer, clEnqueueMapBuffer, clEnqueueUnmapMemObject
     cpu_duration_t accumulated_free_time;  // clReleaseMemObject, clEnqueueUnmapMemObject
-
 	cpu_duration_t accumulated_overhead_time; // clCreateKernel, clSetKernelArg
 	cpu_duration_t accumulated_compilation_time; // clCreateProgramWithSource, clBuildProgram, clGetProgramBuildInfo
 	cpu_duration_t accumulated_copy_to_device_time; // clEnqueueWriteBuffer, clEnqueueUnmapMemObject
@@ -1407,3 +1406,18 @@ void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback
 	__int_print_timings(prefix);
 	prl_shutdown();
 }
+
+#if 0
+
+prl_alloc -> __int_pencil_alloc -> alloc:alloc_and_return_host_ptr -> memory.alloc -> alloc_dev_buffer -> clCreateBuffer
+                                                                                      -> map -> clEnqueueMapBuffer
+
+prl_free -> __int_pencil_free -> free:free_host_ptr -> free_host_ptr -> memory.free -> unmap -> clEnqueueUnmapMemObject
+                                                                                    -> clReleaseMemObject
+
+prl_create_device_buffer -> __int_opencl_create_device_buffer -> alloc:alloc_and_return_dev_ptr -> memory.dev_alloc -> unmap -> clEnqueueUnmapMemObject
+                                                                                                                    -> alloc_dev_buffer -> clCreateBuffer
+
+prl_release_buffer-> __int_opencl_release_buffer -> free:free_dev_buffer -> memory.dev_free -> clReleaseMemObject
+
+#endif
