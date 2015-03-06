@@ -31,3 +31,9 @@ Makefile
 
 # KDE Dolphin
 .directory
+
+# Eclipde CDT
+/.cproject
+/.project
+/.settings/
+

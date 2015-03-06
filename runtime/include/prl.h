@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-enum PRL_INIT_FLAG
+enum prl_init_flags
 {
     PRL_TARGET_DEVICE_DYNAMIC = 0, // Use as default
     PRL_TARGET_DEVICE_GPU_ONLY,
@@ -58,62 +58,63 @@ extern void *prl_alloc (size_t size);
 extern void prl_free (void * ptr);
 
 /** Initialize PRL runtime.  */
-extern void prl_init (enum PRL_INIT_FLAG flag);
+extern void prl_init (enum prl_init_flags flag);
 
 /** Release PRL runtime.  */
 extern void prl_shutdown (void);
 
-typedef  struct __int_pencil_cl_kernel *pencil_cl_kernel;
-typedef  struct __int_pencil_cl_program *pencil_cl_program;
-typedef  struct __int_pencil_cl_mem *pencil_cl_mem;
+typedef  struct __int_pencil_cl_kernel *prl_cl_kernel;
+typedef  struct __int_pencil_cl_program *prl_cl_program;
+typedef  struct __int_pencil_cl_mem *prl_cl_mem;
 
 /* Create and compile OpenCL program from a file.  */
-extern pencil_cl_program opencl_create_program_from_file (const char *, const char *);
+extern prl_cl_program prl_create_program_from_file (const char *, const char *);
 
 /* Create and compile OpenCL program from a string.  */
-extern pencil_cl_program opencl_create_program_from_string (const char *,
+extern prl_cl_program prl_create_program_from_string (const char *,
                                                             size_t,
                                                             const char *);
 
 /* Releases the OpenCL program.  */
-extern void opencl_release_program (pencil_cl_program);
+extern void prl_release_program (prl_cl_program);
 
 /* Creates the kernel.  */
-extern pencil_cl_kernel opencl_create_kernel (pencil_cl_program, const char *);
+extern prl_cl_kernel prl_create_kernel (prl_cl_program, const char *);
 
 /* Releases the kernel.  */
-extern void opencl_release_kernel (pencil_cl_kernel);
+extern void prl_release_kernel (prl_cl_kernel);
 
 /* Create device memory buffer.  */
-extern pencil_cl_mem opencl_create_device_buffer (cl_mem_flags, size_t, void *);
+extern prl_cl_mem prl_create_device_buffer (cl_mem_flags, size_t, void *);
 
 /* Release the device memory buffer.  */
-extern void opencl_release_buffer (pencil_cl_mem);
+extern void prl_release_buffer (prl_cl_mem);
 
 /* Copy host memory buffer to device memory.  */
-extern void opencl_copy_to_device (pencil_cl_mem, size_t, void *);
+extern void prl_copy_to_device (prl_cl_mem, size_t, void *);
 
 /* Copy device memory buffer to host memory.  */
-extern void opencl_copy_to_host (pencil_cl_mem, size_t, void *);
+extern void prl_copy_to_host (prl_cl_mem, size_t, void *);
 
-extern void opencl_set_kernel_arg (pencil_cl_kernel, cl_uint, size_t,
+extern void prl_set_kernel_arg (prl_cl_kernel, cl_uint, size_t,
                                    const void *, int);
 
-extern void opencl_launch_kernel (pencil_cl_kernel, cl_uint, const size_t *,
+extern void prl_launch_kernel (prl_cl_kernel, cl_uint, const size_t *,
                                   const size_t *, const size_t *);
 
 
-/** Dump statistics to stdout */
+/** Dump ad-hoc statistics to stdout */
 extern void prl_stats_dump (void);
 extern void prl_stats_reset (void);
 
-extern void prl_timing_start(void);
-extern void prl_timing_stop(void);
-extern void prl_timing_reset(void);
-extern void prl_timing_dump(void);
+/* More accurate mesurement with multiple runs */
+extern void prl_timings_start(void);
+extern void prl_timings_stop(void);
+extern void prl_timings_reset(void);
+extern void prl_timings_dump(void);
 
 typedef void (*timing_callback)(void *user);
-extern void prl_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user);
+extern void prl_timings(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user);
 
 /** smaller of two numbers, 
     potentially called by ppcg generated code */

@@ -35,28 +35,28 @@
 extern "C" {
 #endif
 
-    typedef  struct __int_pencil_cl_kernel *pencil_cl_kernel;
-    typedef  struct __int_pencil_cl_program *pencil_cl_program;
-    typedef  struct __int_pencil_cl_mem *pencil_cl_mem;
+    typedef  struct __int_pencil_cl_kernel *prl_cl_kernel;
+    typedef  struct __int_pencil_cl_program *prl_cl_program;
+    typedef  struct __int_pencil_cl_mem *prl_cl_mem;
 
-    pencil_cl_program __int_opencl_create_program_from_file (const char *, const char *);
-    pencil_cl_program __int_opencl_create_program_from_string (const char *, size_t, const char *);
-    void __int_opencl_release_program (pencil_cl_program);
-    pencil_cl_kernel __int_opencl_create_kernel (pencil_cl_program,
+    prl_cl_program __int_opencl_create_program_from_file (const char *, const char *);
+    prl_cl_program __int_opencl_create_program_from_string (const char *, size_t, const char *);
+    void __int_opencl_release_program (prl_cl_program);
+    prl_cl_kernel __int_opencl_create_kernel (prl_cl_program,
                                                  const char *);
-    void __int_opencl_release_kernel (pencil_cl_kernel);
-    pencil_cl_mem __int_opencl_create_device_buffer (cl_mem_flags, size_t,
+    void __int_opencl_release_kernel (prl_cl_kernel);
+    prl_cl_mem __int_opencl_create_device_buffer (cl_mem_flags, size_t,
                                                      void *);
-    void __int_opencl_release_buffer (pencil_cl_mem);
-    void __int_opencl_copy_to_device (pencil_cl_mem, size_t, void *);
-    void __int_opencl_copy_to_host (pencil_cl_mem, size_t, void *);
+    void __int_opencl_release_buffer (prl_cl_mem);
+    void __int_opencl_copy_to_device (prl_cl_mem, size_t, void *);
+    void __int_opencl_copy_to_host (prl_cl_mem, size_t, void *);
     void *__int_pencil_alloc (size_t);
     void __int_pencil_free (void *);
     void __int_pencil_init (int n_devices, const cl_device_type * devices, bool cpu_profiling_enabled, bool gpu_profiling_enabled, bool blocking);
     void __int_pencil_shutdown  (bool print_stats_on_release);
-    void __int_opencl_set_kernel_arg (pencil_cl_kernel, cl_uint, size_t,
+    void __int_opencl_set_kernel_arg (prl_cl_kernel, cl_uint, size_t,
                                       const void *, int);
-    void __int_opencl_launch_kernel (pencil_cl_kernel, cl_uint, const size_t *,
+    void __int_opencl_launch_kernel (prl_cl_kernel, cl_uint, const size_t *,
                                      const size_t *, const size_t *);
 	
 	void __int_pencil_dump_stats();
@@ -66,7 +66,7 @@ extern "C" {
 	void __int_reset_timings();
 	void __int_pencil_timing_start();
 	void __int_pencil_timing_stop();
-	void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PRL_INIT_FLAG flags, int dryruns, int runs);
+	void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum prl_init_flags flags, int dryruns, int runs);
 
 #ifdef __cplusplus
 }

@@ -237,7 +237,7 @@ struct __int_pencil_cl_mem
 class memory_manager
 {
 
-    std::map<void*, pencil_cl_mem> cache;
+    std::map<void*, prl_cl_mem> cache;
     size_t unmanaged_buffer_count;
 
 #ifdef THREAD_SAFE
@@ -267,7 +267,7 @@ public:
         cl_mem dev_buff =
           alloc_dev_buffer (ctx, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
                             size, NULL);
-        pencil_cl_mem  buff = new __int_pencil_cl_mem (dev_buff, size, true);
+        prl_cl_mem  buff = new __int_pencil_cl_mem (dev_buff, size, true);
         buff->map (queue, true);
         assert (buff->exposed_ptr);
 
@@ -275,7 +275,7 @@ public:
         return buff->exposed_ptr;
     }
 
-    pencil_cl_mem dev_alloc (cl_context ctx, cl_mem_flags flags, size_t size,
+    prl_cl_mem dev_alloc (cl_context ctx, cl_mem_flags flags, size_t size,
                              void *host_ptr, cl_command_queue queue)
     {
 #ifdef THREAD_SAFE
@@ -293,7 +293,7 @@ public:
         return new __int_pencil_cl_mem (new_buffer, size, false);
     }
 
-    void copy_to_device (cl_command_queue queue, pencil_cl_mem dev, size_t size,
+    void copy_to_device (cl_command_queue queue, prl_cl_mem dev, size_t size,
                          void *host)
     {
         if (dev->exposed_ptr != NULL)
@@ -311,7 +311,7 @@ public:
         __int_add_event(event);
     }
 
-    void copy_to_host (cl_command_queue queue, pencil_cl_mem dev, size_t size,
+    void copy_to_host (cl_command_queue queue, prl_cl_mem dev, size_t size,
                        void *host)
     {
         if (dev->exposed_ptr)
@@ -338,7 +338,7 @@ public:
 #ifdef THREAD_SAFE
         std::unique_lock<std::mutex> lck(lock);
 #endif
-        pencil_cl_mem buff = cache[ptr];
+        prl_cl_mem buff = cache[ptr];
 
         assert (buff->exposed_ptr == ptr);
         buff->unmap (queue);
@@ -360,7 +360,7 @@ public:
         assert (unmanaged_buffer_count == 0);
     }
 
-    void dev_free (pencil_cl_mem buff)
+    void dev_free (prl_cl_mem buff)
     {
         if (!buff->cached)
         {
@@ -397,7 +397,7 @@ private:
     std::string prog_file;
     std::string opts;
     cl_program prog;
-    std::map<std::string, pencil_cl_kernel> kernel_name_idx;
+    std::map<std::string, prl_cl_kernel> kernel_name_idx;
 
     const char * source;
 
@@ -419,7 +419,7 @@ public:
 
 
 
-    pencil_cl_kernel get_kernel (const char *name)
+    prl_cl_kernel get_kernel (const char *name)
     {
         assert (prog);
         std::string key (name);
@@ -432,7 +432,7 @@ public:
         cl_kernel kernel = clCreateKernel (prog, name, &err);
         OPENCL_ASSERT (err);
         assert (kernel);
-        pencil_cl_kernel res = new __int_pencil_cl_kernel (kernel);
+        prl_cl_kernel res = new __int_pencil_cl_kernel (kernel);
         kernel_name_idx[key] = res;
         return res;
     }
@@ -466,10 +466,10 @@ class program_cache
 #ifdef THREAD_SAFE
     std::mutex lock;
 #endif
-    std::vector<pencil_cl_program> programs;
+    std::vector<prl_cl_program> programs;
 public:
 
-    pencil_cl_program get_program (const char *file, const char *opts,
+    prl_cl_program get_program (const char *file, const char *opts,
                                    cl_context ctx, cl_device_id dev)
     {
 #ifdef THREAD_SAFE
@@ -487,7 +487,7 @@ public:
         return programs.back ();
     }
 
-    pencil_cl_program get_program (const char *program, size_t size,
+    prl_cl_program get_program (const char *program, size_t size,
                                    const char *opts,
                                    cl_context ctx, cl_device_id dev)
     {
@@ -631,28 +631,28 @@ public:
         return current_device_type;
     }
 
-    pencil_cl_program create_or_get_program (const char *path, const char *opts)
+    prl_cl_program create_or_get_program (const char *path, const char *opts)
     {
 		stopwatch wtch(accumulated_compilation_time, cpu_profiling_enabled);
 
         return programs.get_program (path, opts, context, device);
     }
 
-    pencil_cl_program create_or_get_program (const char *program, size_t size, const char *opts)
+    prl_cl_program create_or_get_program (const char *program, size_t size, const char *opts)
     {
 		stopwatch wtch(accumulated_compilation_time, cpu_profiling_enabled);
 
         return programs.get_program (program, size, opts, context, device);
     }
 
-    void release_program (pencil_cl_program prog)
+    void release_program (prl_cl_program prog)
     {
         /* All programs are cached by the runtime and released when the
            session is released.  */
         UNUSED (prog);
     }
 
-    void release_kernel (pencil_cl_kernel kernel)
+    void release_kernel (prl_cl_kernel kernel)
     {
         /* All kernels are cached by the runtime and released when the
            session is released.  */
@@ -666,7 +666,7 @@ public:
         return memory.alloc (context, queue, size);
     }
 
-    pencil_cl_mem alloc_and_return_dev_ptr (cl_mem_flags flags, size_t size,
+    prl_cl_mem alloc_and_return_dev_ptr (cl_mem_flags flags, size_t size,
                                             void *host_ptr)
     {
 		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
@@ -681,21 +681,21 @@ public:
         memory.free (ptr, queue);
     }
 
-    void free_dev_buffer (pencil_cl_mem dev)
+    void free_dev_buffer (prl_cl_mem dev)
     {
 		stopwatch wtch(accumulated_overhead_time, cpu_profiling_enabled);
 
         memory.dev_free (dev);
     }
 
-    void copy_to_device (pencil_cl_mem dev, size_t size, void *host)
+    void copy_to_device (prl_cl_mem dev, size_t size, void *host)
     {
 		stopwatch wtch(accumulated_copy_to_device_time, cpu_profiling_enabled);
 
         memory.copy_to_device (queue, dev, size, host);
     }
 
-    void copy_to_host (pencil_cl_mem dev, size_t size, void *host)
+    void copy_to_host (prl_cl_mem dev, size_t size, void *host)
     {
 		stopwatch wtch(accumulated_copy_to_host_time, cpu_profiling_enabled);
 
@@ -1063,55 +1063,55 @@ public:
     }
 };
 
-pencil_cl_program __int_opencl_create_program_from_file (const char *filename,
+prl_cl_program __int_opencl_create_program_from_file (const char *filename,
                                                          const char *opts)
 {
     return runtime::get_session ()->create_or_get_program (filename, opts);
 }
 
-pencil_cl_program __int_opencl_create_program_from_string (const char *program,
+prl_cl_program __int_opencl_create_program_from_string (const char *program,
                                                            size_t size,
                                                            const char *opts)
 {
     return runtime::get_session ()->create_or_get_program (program, size, opts);
 }
 
-void __int_opencl_release_program (pencil_cl_program program)
+void __int_opencl_release_program (prl_cl_program program)
 {
 	 auto wtch = runtime::get_session ()->get_overhead_stopwatch();
     runtime::get_session ()->release_program (program);
 }
 
-pencil_cl_kernel __int_opencl_create_kernel (pencil_cl_program program,
+prl_cl_kernel __int_opencl_create_kernel (prl_cl_program program,
                                              const char *name)
 {
     auto wtch = runtime::get_session ()->get_overhead_stopwatch();
     return program->get_kernel (name);
 }
 
-void __int_opencl_release_kernel (pencil_cl_kernel kernel)
+void __int_opencl_release_kernel (prl_cl_kernel kernel)
 {
     runtime::get_session ()->release_kernel (kernel);
 }
 
-pencil_cl_mem __int_opencl_create_device_buffer (cl_mem_flags flags, size_t size,
+prl_cl_mem __int_opencl_create_device_buffer (cl_mem_flags flags, size_t size,
                                                  void *host_ptr)
 {
     return
       runtime::get_session ()->alloc_and_return_dev_ptr (flags, size, host_ptr);
 }
 
-void __int_opencl_release_buffer (pencil_cl_mem buffer)
+void __int_opencl_release_buffer (prl_cl_mem buffer)
 {
     runtime::get_session ()->free_dev_buffer (buffer);
 }
 
-void __int_opencl_copy_to_device (pencil_cl_mem dev, size_t size, void *host)
+void __int_opencl_copy_to_device (prl_cl_mem dev, size_t size, void *host)
 {
     runtime::get_session ()->copy_to_device (dev, size, host);
 }
 
-void __int_opencl_copy_to_host (pencil_cl_mem dev, size_t size, void *host)
+void __int_opencl_copy_to_host (prl_cl_mem dev, size_t size, void *host)
 {
     runtime::get_session ()->copy_to_host (dev, size, host);
 }
@@ -1147,7 +1147,7 @@ void __int_pencil_shutdown (bool print_stats_on_release)
 }
 
 
-void __int_opencl_set_kernel_arg (pencil_cl_kernel kernel, cl_uint idx,
+void __int_opencl_set_kernel_arg (prl_cl_kernel kernel, cl_uint idx,
                                   size_t size, const void *value, int buffer)
 {
 	auto session = runtime::get_session ();
@@ -1161,15 +1161,15 @@ void __int_opencl_set_kernel_arg (pencil_cl_kernel kernel, cl_uint idx,
     }
     else
     {
-        assert (size == sizeof (pencil_cl_mem));
-        pencil_cl_mem arg = *((pencil_cl_mem*)value);
+        assert (size == sizeof (prl_cl_mem));
+        prl_cl_mem arg = *((prl_cl_mem*)value);
         cl_error_code err = clSetKernelArg (kernel->kernel, idx,
                                             sizeof (cl_mem), &(arg->dev));
         OPENCL_ASSERT (err);
     }
 }
 
-void __int_opencl_launch_kernel (pencil_cl_kernel kernel, cl_uint work_dim,
+void __int_opencl_launch_kernel (prl_cl_kernel kernel, cl_uint work_dim,
                                  const size_t *goffset, const size_t *gws,
                                  const size_t *lws)
 {
@@ -1345,10 +1345,10 @@ void __int_pencil_timing_stop() {
 
 
 
-void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum PRL_INIT_FLAG flags, int dryruns, int runs) {
+void __int_pencil_timing(timing_callback timed_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user, enum prl_init_flags flags, int dryruns, int runs) {
 	assert(timed_func);
 
-	prl_init(static_cast<PRL_INIT_FLAG>(flags | PRL_PROFILING_ENABLED));
+	prl_init(static_cast<prl_init_flags>(flags | PRL_PROFILING_ENABLED));
 	__int_reset_timings();
 
 	// Warmup runs
