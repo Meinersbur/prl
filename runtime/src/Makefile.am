@@ -1,6 +1,6 @@
 # @configure_input@
  
-AM_CPPFLAGS = "-I${abs_srcdir}/../include"
+AM_CPPFLAGS = "-I${abs_srcdir}/../include" "-I${abs_srcdir}/../../include"
 
 lib_LTLIBRARIES = libprl.la
 

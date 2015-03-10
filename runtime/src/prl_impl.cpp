@@ -869,6 +869,84 @@ public:
     	}
     }
 
+protected:
+    std::string get_device_string_property(cl_device_info prop) const {
+    	// Get the length
+    	size_t size=0;
+    	auto err = clGetDeviceInfo(device, prop, 0, NULL, &size);
+    	if (err!=CL_INVALID_VALUE) {
+    		OPENCL_ASSERT(err);
+    	}
+
+    	// Get the data
+    	char buf[size+1];
+    	err = clGetDeviceInfo(device, prop,size,  &buf,NULL);
+    	OPENCL_ASSERT(err);
+
+    	return buf;
+    }
+
+    std::string get_platform_string_property(cl_platform_id platform, cl_platform_info prop) const {
+    	// Get the length
+    	size_t size = 0;
+    	auto err = clGetPlatformInfo(platform, prop, 0, NULL, &size);
+    	if (err!=CL_INVALID_VALUE) {
+    		OPENCL_ASSERT(err);
+    	}
+
+    	// Get the data
+    	char buf[size+1];
+    	err =  clGetPlatformInfo(platform, prop, size, &buf, NULL);
+    	OPENCL_ASSERT(err);
+
+    	return buf;
+    }
+
+public:
+    std::string get_device_name() const {
+    	return get_device_string_property(CL_DEVICE_NAME);
+    }
+
+    std::string get_device_vendor() const {
+    	return get_device_string_property(CL_DEVICE_VENDOR);
+    }
+
+    std::string get_device_version() const {
+    	return get_device_string_property(CL_DEVICE_VERSION);
+    }
+
+    std::string get_driver_version() const {
+    	return get_device_string_property(CL_DRIVER_VERSION);
+    }
+
+    cl_platform_id get_platform_id() const {
+    	cl_platform_id platform;
+    	auto err = clGetDeviceInfo(device, CL_DEVICE_PLATFORM,sizeof(platform),  &platform,NULL);
+    	OPENCL_ASSERT(err);
+    	return platform;
+    }
+
+    std::string get_platform_name() const {
+    	auto platform = get_platform_id();
+    	return get_platform_string_property(platform, CL_PLATFORM_NAME);
+    }
+
+    std::string get_platform_vendor() const {
+    	auto platform = get_platform_id();
+    	return get_platform_string_property(platform, CL_PLATFORM_VENDOR);
+    }
+
+    std::string get_platform_version() const {
+    	auto platform = get_platform_id();
+    	return get_platform_string_property(platform, CL_PLATFORM_VERSION);
+    }
+
+
+    void dump_device() {
+    	std::cout << "Platform: " << get_platform_vendor() << " " << get_platform_name() << " (" << get_platform_version() << ")\n";
+    	std::cout << "Device:   " << get_device_vendor() << " " << get_device_name() << " (Driver version " << get_driver_version() << ", " << get_device_version() << ")\n";
+     }
+
     void dump_stats(const char *prefix) {
     	if (!prefix)
     		prefix = "";
@@ -877,6 +955,7 @@ public:
     	auto gpu_total = accumulated_gpu_working_time + accumulated_gpu_unused_time;
 
     	std::cout << "===============================================================================\n";
+    	dump_device();
 		if (blocking)
 			std::cout << "Blocking implementation\n";
 		else
@@ -1015,6 +1094,13 @@ class runtime
               << "Use PENCIL_TARGET_DEVICE_DYNAMIC for consecutive pencil_init calls to use the existing settings."
               << std::endl;
             die ("invalid session initialization");
+        }
+
+        if ((!session->is_cpu_profiling_enabled() && cpu_profiling_enabled)
+         || (!session->is_gpu_profiling_enabled() && gpu_profiling_enabled)) {
+        	std::cerr << "Profiling (CPU and/or GPU) requested but not specified in the first call of prl_init."
+        			<< "Either add PRL_PROFILING_ENABLED to your call to prl_init() or re-run with the PRL_PROFILING environment variable set";
+        	die ("invalid session initialization");
         }
     }
 
@@ -1278,12 +1364,14 @@ void __int_print_timings(const char *prefix) {
 	}
 
 	std::cout << "===============================================================================\n";
+	session->dump_device();
 	if (blocking)
 		std::cout << "Blocking implementation\n";
 	else
 		std::cout << "Non-blocking implementation\n";
 	{
-		std::cout << prefix << "                    " << "     median (relative standard deviation) of " << n << " samples\n";
+		std::cout << "\n";
+		std::cout << "                    " << "     median (relative standard deviation) of " << n << " samples\n";
 		std::cout << prefix << "Duration:           " << median_ms(durations) << " (" << variation_percent(durations) <<  ")\n";
 	}
 	if (cpu_profiling_enabled) {

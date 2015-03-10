@@ -28,7 +28,7 @@
 #include "prl.h"
 #include "prl_impl.h"
 
-static const char * env_name = "PENCIL_TARGET_DEVICE";
+static const char * env_name = "PRL_TARGET_DEVICE";
 static const char * GPU_TARGET_DEVICE = "gpu";
 static const char * CPU_TARGET_DEVICE = "cpu";
 static const char * GPU_CPU_TARGET_DEVICE = "gpu_cpu";
@@ -201,7 +201,7 @@ void prl_stats_reset (void) {
 	__int_pencil_timing_stop();
 }
 
- void prl(void) {
+ void prl_timings_reset(void) {
 	__int_reset_timings();
 }
  void prl_timings_dump(void) {
