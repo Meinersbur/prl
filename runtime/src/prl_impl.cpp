@@ -148,7 +148,7 @@ static double sqr(double val) { return val*val; }
 template<typename T>
 static variation_percent_t variation_percent(const std::vector<T> &vec) {
 	auto n = vec.size();
-	if (n==0)
+	if (n<=1)
 		return variation_percent_t();
 
 	T sum = T::zero();
@@ -955,11 +955,13 @@ public:
     	auto gpu_total = accumulated_gpu_working_time + accumulated_gpu_unused_time;
 
     	std::cout << "===============================================================================\n";
+    	std::cout << "PRL time measurements";
+    	if (blocking)
+    		std::cout << " (blocking)\n";
+    	else
+    		std::cout << " (non-blocking)\n";
     	dump_device();
-		if (blocking)
-			std::cout << "Blocking implementation\n";
-		else
-			std::cout << "Non-blocking implementation\n";
+    	std::cout << "\n";
     	if (cpu_profiling_enabled) {
 			std::cout << prefix << "CPU_Copy-to-device: " << accumulated_copy_to_device_time << "\n";
 			std::cout << prefix << "CPU_Compute:        " << accumulated_compute_time << "\n";
@@ -1364,13 +1366,14 @@ void __int_print_timings(const char *prefix) {
 	}
 
 	std::cout << "===============================================================================\n";
-	session->dump_device();
+	std::cout << "PRL time measurements";
 	if (blocking)
-		std::cout << "Blocking implementation\n";
+		std::cout << " (blocking)\n";
 	else
-		std::cout << "Non-blocking implementation\n";
-	{
+		std::cout << " (non-blocking)\n";
+	session->dump_device();
 		std::cout << "\n";
+	{
 		std::cout << "                    " << "     median (relative standard deviation) of " << n << " samples\n";
 		std::cout << prefix << "Duration:           " << median_ms(durations) << " (" << variation_percent(durations) <<  ")\n";
 	}
