@@ -46,7 +46,7 @@ extern "C" {
                                                  const char *);
     void __int_opencl_release_kernel (prl_cl_kernel);
     prl_cl_mem __int_opencl_create_device_buffer (cl_mem_flags, size_t,
-                                                     void *);
+                                                     const void *);
     void __int_opencl_release_buffer (prl_cl_mem);
     void __int_opencl_copy_to_device (prl_cl_mem, size_t, void *);
     void __int_opencl_copy_to_host (prl_cl_mem, size_t, void *);

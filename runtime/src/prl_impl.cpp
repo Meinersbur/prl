@@ -123,8 +123,8 @@ static common_duration_t median_ms(const std::vector<T> &vec) {
 		return std::chrono::duration_cast<common_duration_t>(cpy.at(len / 2));
 	}
 
-	return std::chrono::duration_cast<common_duration_t>(cpy.at(len/2-1))
-			+ std::chrono::duration_cast<common_duration_t>(cpy.at(len/2)/2);
+	return (std::chrono::duration_cast<common_duration_t>(cpy.at(len/2-1))
+			+ std::chrono::duration_cast<common_duration_t>(cpy.at(len/2)/2))/2;
 }
 
 
@@ -1202,10 +1202,10 @@ void __int_opencl_release_kernel (prl_cl_kernel kernel)
 }
 
 prl_cl_mem __int_opencl_create_device_buffer (cl_mem_flags flags, size_t size,
-                                                 void *host_ptr)
+                                                 const void *host_ptr)
 {
     return
-      runtime::get_session ()->alloc_and_return_dev_ptr (flags, size, host_ptr);
+      runtime::get_session ()->alloc_and_return_dev_ptr (flags, size, const_cast<void*>(host_ptr));
 }
 
 void __int_opencl_release_buffer (prl_cl_mem buffer)
