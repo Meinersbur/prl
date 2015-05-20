@@ -124,7 +124,7 @@ static common_duration_t median_ms(const std::vector<T> &vec) {
 	}
 
 	return (std::chrono::duration_cast<common_duration_t>(cpy.at(len/2-1))
-			+ std::chrono::duration_cast<common_duration_t>(cpy.at(len/2)/2))/2;
+			+ std::chrono::duration_cast<common_duration_t>(cpy.at(len/2)))/2;
 }
 
 

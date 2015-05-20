@@ -173,12 +173,20 @@
 #define nextafterd(from, to) nextafter((double) (from), (double) (to))
 #define copysignf(x, y) copysign((float) (x), (float) (y))
 #define copysignd(x, y) copysign((double) (x), (double) (y))
-inline char __attribute__((const)) bclampi(char val, char min, char max) { return (val<min) ? min : ((val>max) ? max : val); }
-inline short __attribute__((const)) sclampi(short val, short min, short max) { return (val<min) ? min : ((val>max) ? max : val); }
-inline int __attribute__((const)) iclampi(int val, int min, int max) { return (val<min) ? min : ((val>max) ? max : val); }
-inline long __attribute__((const)) lclampi(long val, long min, long max) { return (val<min) ? min : ((val>max) ? max : val); }
-inline unsigned char __attribute__((const)) ubclampi(unsigned char val, unsigned char min, unsigned char max) { return (val<min) ? min : ((val>max) ? max : val); }
-inline unsigned short __attribute__((const)) usclampi(unsigned short val, unsigned short min, unsigned short max) { return (val<min) ? min : ((val>max) ? max : val); }
-inline unsigned int __attribute__((const)) uclampi(unsigned int val, unsigned int min, unsigned int max) { return (val<min) ? min : ((val>max) ? max : val); }
-inline unsigned long __attribute__((const)) ulclampi(unsigned long val, unsigned long min, unsigned long max) { return (val<min) ? min : ((val>max) ? max : val); }
+#define bclampi clamp
+//inline char __attribute__((const)) bclampi(char val, char min, char max) { return (val<min) ? min : ((val>max) ? max : val); }
+#define sclampi clamp
+//inline short __attribute__((const)) sclampi(short val, short min, short max) { return (val<min) ? min : ((val>max) ? max : val); }
+#define iclampi clamp
+//inline int __attribute__((const)) iclampi(int val, int min, int max) { return (val<min) ? min : ((val>max) ? max : val); }
+#define lclampi clamp
+//inline long __attribute__((const)) lclampi(long val, long min, long max) { return (val<min) ? min : ((val>max) ? max : val); }
+#define ubclampi clamp
+//inline unsigned char __attribute__((const)) ubclampi(unsigned char val, unsigned char min, unsigned char max) { return (val<min) ? min : ((val>max) ? max : val); }
+#define usclampi clamp
+//inline unsigned short __attribute__((const)) usclampi(unsigned short val, unsigned short min, unsigned short max) { return (val<min) ? min : ((val>max) ? max : val); }
+#define uclampi clamp
+//inline unsigned int __attribute__((const)) uclampi(unsigned int val, unsigned int min, unsigned int max) { return (val<min) ? min : ((val>max) ? max : val); }
+#define ulclampi clamp
+//inline unsigned long __attribute__((const)) ulclampi(unsigned long val, unsigned long min, unsigned long max) { return (val<min) ? min : ((val>max) ? max : val); }
 #endif

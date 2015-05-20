@@ -36,13 +36,13 @@
 #ifndef PENCIL_H
 #define PENCIL_H
 
+#ifdef __PENCIL__
+/* The file is processed by the PENCIL-to-OpenCL code generator. */
+
 /* Preprocessor aliases for PENCIL builtins */
 #define USE __pencil_use
 #define DEF __pencil_def
 #define MAYBE __pencil_maybe()
-
-#ifdef __PENCIL__
-/* The file is processed by the PENCIL-to-OpenCL code generator. */
 
 /* Custom stdbool.h */
 #define bool _Bool
@@ -56,8 +56,18 @@
 /* PENCIL-specific macros */
 #define ACCESS(...) __attribute__((pencil_access(__VA_ARGS__)))
 
+#if __PENCIL__==3
+#define __pencil_use(...)
+#define __pencil_def(...)
+#define __pencil_maybe() 1
+#endif
+
 #else /* __PENCIL__ */
 /* The file is processed as a C file. */
+
+#define USE(...) do {} while (0)
+#define DEF(...) do {} while (0)
+#define MAYBE 0
 
 /* PENCIL to C compatibility layer. */
 #include "pencil_compat.h"
