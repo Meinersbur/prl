@@ -15,19 +15,16 @@ extern "C" {
 struct prl_mem_struct;
 typedef struct prl_mem_struct *prl_mem;
 
-
 enum prl_mem_access {
-	prl_mem_access_none = 0,
-	prl_mem_access_read = 1,
-	prl_mem_access_write = 2,
-	prl_mem_access_rw = prl_mem_access_read | prl_mem_access_write
+    prl_mem_access_none = 0,
+    prl_mem_access_read = 1,
+    prl_mem_access_write = 2,
+    prl_mem_access_rw = prl_mem_access_read | prl_mem_access_write
 };
-typedef enum prl_mem_access   prl_mem_access ;
+typedef enum prl_mem_access prl_mem_access;
 
 void *prl_alloc(size_t size); // fixed
-void prl_free(void *ptr); // fixed
-
-
+void prl_free(void *ptr);     // fixed
 
 prl_mem *prl_mem_create(size_t size);
 prl_mem *prl_mem_create_prefilled(size_t size, void *data);
