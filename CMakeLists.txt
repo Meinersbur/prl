@@ -1,5 +1,5 @@
 ### CMake configuration
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.2)
 
 ### Project details
 project("prl" C)
@@ -9,6 +9,12 @@ set(PACKAGE_BUGREPORT "prl@meinersbur.de")
 set(PRL_SOURCE_DIR ${PROJECT_SOURCE_DIR})
 set(PRL_BINARY_DIR ${PROJECT_BINARY_DIR})
 
- 
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
- 
+find_package(OpenCL REQUIRED)
+
+add_subdirectory(src)
+
+add_executable(correlation correlation.ppcg_opencl.c)
+target_link_libraries(correlation prl_opencl)
