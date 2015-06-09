@@ -12,9 +12,21 @@
 #include <inttypes.h>
 #include "prl.h"
 
+static const char *PRL_TARGET_DEVICE = "PRL_TARGET_DEVICE";
+
+static const char *PRL_PROFILING = "PRL_PROFILING";
+static const char *PRL_CPU_PROFILING = "PRL_CPU_PROFILING";
+static const char *PRL_GPU_PROFILING = "PRL_GPU_PROFILING";
+static const char *PRL_PROFILING_PREFIX = "PRL_PROFILING_PREFIX";
+static const char *PRL_BLOCKING = "PRL_BLOCKING";
+static const char *PRL_TIMINGS_RUNS = "PRL_TIMINGS_RUNS";
+static const char *PRL_TIMINGS_DRY_RUNS = "PRL_TIMINGS_DRY_RUNS";
+static const char *PRL_TIMINGS_PREFIX = "PRL_TIMINGS_PREFIX";
+static const char *PRL_PREFIX = "PRL_PREFIX";
+
 enum prl_device_choice {
     PRL_TARGET_DEVICE_FIRST,
-    PRL_TARGET_DEVICE_DYNAMIC,
+    PRL_TARGET_DEVICE_FIXED,
     PRL_TARGET_DEVICE_GPU_ONLY,
     PRL_TARGET_DEVICE_CPU_ONLY,
     PRL_TARGET_DEVICE_GPU_THEN_CPU,
@@ -23,10 +35,12 @@ enum prl_device_choice {
 
 struct prl_global_config {
     enum prl_device_choice device_choice;
+    int chosed_platform;
+    int chosen_device;
+
     int cpu_profiling;
     int gpu_profiling;
     bool blocking;
-    //bool global_queue;
 };
 
 struct prl_global_state {
@@ -35,12 +49,15 @@ struct prl_global_state {
 
     cl_device_id device;
     cl_context context;
-    //cl_command_queue queue;
 
     prl_program programs;
+    prl_scop scops;
+    prl_mem mems;
 };
 
 struct prl_scop_struct {
+
+    prl_scop next;
 };
 
 struct prl_scop_inst_struct {
@@ -51,6 +68,7 @@ struct prl_scop_inst_struct {
 struct prl_program_struct {
     cl_program program;
 
+    prl_kernel kernels;
     prl_program next;
 };
 
@@ -58,6 +76,8 @@ struct prl_kernel_struct {
     prl_scop scop;
 
     cl_kernel kernel;
+
+    prl_kernel next;
 };
 
 struct prl_mem_struct {
@@ -66,6 +86,8 @@ struct prl_mem_struct {
     cl_mem mem;
     void *host_mem;
     size_t size;
+
+    prl_mem next;
 };
 
 static struct prl_global_config global_config = {0};
@@ -249,21 +271,176 @@ static cl_command_queue clCreateCommandQueue_checked_impl(cl_context context, cl
     return result;
 }
 
+#define clGetPlatformIDs_checked(num_entries, platforms, num_platforms) clGetPlatformIDs_checked_impl(num_entries, platforms, num_platforms, __FILE__, __LINE__)
+static void clGetPlatformIDs_checked_impl(cl_uint num_entries, cl_platform_id *platforms, cl_uint *num_platforms, const char *file, int line) {
+    cl_int err = clGetPlatformIDs(num_entries, platforms, num_platforms);
+    if (err == CL_SUCCESS)
+        opencl_error(err, "clGetPlatformIDs", file, line);
+}
+
+#define clGetDeviceIDs_checked(platform, device_type, num_entries, devices, num_devices) clGetDeviceIDs_checked_impl(platform, device_type, num_entries, devices, num_devices, __FILE__, __LINE__)
+static void clGetDeviceIDs_checked_impl(cl_platform_id platform, cl_device_type device_type, cl_uint num_entries, cl_device_id *devices, cl_uint *num_devices, const char *file, int line) {
+    cl_int err = clGetDeviceIDs(platform, device_type, num_entries, devices, num_devices);
+    if (err != CL_SUCCESS)
+        opencl_error(err, "clGetDeviceIDs", file, line);
+}
+
+#define clCreateContext_checked(properties, num_devices, devices, pfn_notify, user_data) clCreateContext_checked_impl(properties, num_devices, devices, pfn_notify, user_data, __FILE__, __LINE__)
+static cl_context clCreateContext_checked_impl(const cl_context_properties *properties,
+                                               cl_uint num_devices,
+                                               const cl_device_id *devices,
+                                               void(CL_CALLBACK *pfn_notify)(const char *, const void *, size_t, void *),
+                                               void *user_data, const char *file, int line) {
+    cl_int err = CL_INT_MIN;
+    cl_context result = clCreateContext(properties, num_devices, devices, pfn_notify, user_data, &err);
+    if (err != CL_SUCCESS || !result)
+        opencl_error(err, "clCreateContext", file, line);
+    return result;
+}
+
+static cl_device_type devtypes[] = {
+    [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
+    [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_ALL,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_ALL};
+
+static void clGetDeviceInfo_checked(cl_device_id device,
+                                    cl_device_info param_name,
+                                    size_t param_value_size,
+                                    void *param_value,
+                                    size_t *param_value_size_ret) {
+    cl_int err = clGetDeviceInfo(device, param_name, param_value_size, param_value, param_value_size_ret);
+    if (err != CL_SUCCESS)
+        opencl_error(err, "clGetDeviceInfo", NULL, 0);
+}
+
+static int is_preferable_device(cl_device_type old_type, cl_device_type alt_type) {
+    assert(alt_type);
+    if (!old_type)
+        return 1;
+
+    switch (global_config.device_choice) {
+    case PRL_TARGET_DEVICE_CPU_ONLY:
+    case PRL_TARGET_DEVICE_CPU_THEN_GPU:
+        if (!(old_type & CL_DEVICE_TYPE_CPU) && (alt_type & CL_DEVICE_TYPE_CPU))
+            return 1;
+
+        if (!(alt_type & CL_DEVICE_TYPE_CPU) && (old_type & CL_DEVICE_TYPE_CPU))
+            return -1;
+
+    case PRL_TARGET_DEVICE_GPU_ONLY:
+    case PRL_TARGET_DEVICE_GPU_THEN_CPU:
+        if (!(old_type & CL_DEVICE_TYPE_GPU) && (alt_type & CL_DEVICE_TYPE_GPU))
+            return 1;
+
+        if (!(alt_type & CL_DEVICE_TYPE_GPU) && (old_type & CL_DEVICE_TYPE_GPU))
+            return -1;
+    }
+
+    return 0;
+}
+
 static void prl_init() {
     cl_platform_id platform;
 
     if (prl_initialized)
         return;
 
-    memset(&global_state, 0, sizeof(global_state));
-
-    switch (global_config.device_choice) {
-    case PRL_TARGET_DEVICE_FIRST:
-        opencl_check(clGetPlatformIDs(1, &platform, NULL));
-        opencl_check(clGetDeviceIDs(platform, CL_DEVICE_TYPE_DEFAULT, 1, &global_state.device, NULL));
-        opencl_check_err(global_state.context = clCreateContext(NULL, 1, &global_state.device, __ocl_report_error, NULL, &err));
-        break;
+    enum prl_device_choice effective_device_choice = global_config.device_choice;
+    int effective_platform = global_config.chosed_platform;
+    int effective_device = global_config.chosen_device;
+    const char *targetdev = getenv(PRL_TARGET_DEVICE);
+    if (targetdev) {
+        int env_platform, env_device;
+        if (!strcmp(targetdev, "first"))
+            effective_device_choice = PRL_TARGET_DEVICE_FIRST;
+        else if (!strcmp(targetdev, "cpu"))
+            effective_device_choice = PRL_TARGET_DEVICE_CPU_ONLY;
+        else if (!strcmp(targetdev, "cpu_gpu"))
+            effective_device_choice = PRL_TARGET_DEVICE_CPU_THEN_GPU;
+        else if (!strcmp(targetdev, "gpu"))
+            effective_device_choice = PRL_TARGET_DEVICE_GPU_ONLY;
+        else if (!strcmp(targetdev, "gpu_cpu"))
+            effective_device_choice = PRL_TARGET_DEVICE_GPU_THEN_CPU;
+        else if (sscanf(targetdev, "%d:%d", &env_platform, &env_device) == 2) {
+            // reasonable limits
+            assert(0 <= env_platform && env_platform <= 255);
+            assert(0 <= env_device && env_device <= 255);
+            effective_device_choice = PRL_TARGET_DEVICE_FIXED;
+            effective_platform = env_platform;
+            effective_device = env_device;
+        } else {
+            fputs("cannot read env PRL_TARGET_DEVICE\n", stderr); //TODO: Central error handling
+            exit(1);
+        }
     }
+
+    cl_device_id best_device = NULL;
+    switch (effective_device_choice) {
+    case PRL_TARGET_DEVICE_FIRST: {
+        cl_platform_id platform = NULL;
+        clGetPlatformIDs_checked(1, &platform, NULL);
+        assert(platform);
+        clGetDeviceIDs_checked(platform, CL_DEVICE_TYPE_DEFAULT, 1, &best_device, NULL);
+    } break;
+    case PRL_TARGET_DEVICE_FIXED: {
+        cl_platform_id *platforms = malloc((effective_platform + 1) * sizeof *platforms);
+        cl_uint received_platforms = 0;
+        clGetPlatformIDs_checked(effective_platform + 1, platforms, &received_platforms);
+        assert(received_platforms == effective_platform + 1);
+        cl_platform_id platform = platforms[effective_platform];
+        free(platform);
+
+        assert(platform);
+        cl_device_id *devices = malloc((effective_device + 1) * sizeof *devices);
+        cl_uint received_devices = 0;
+        clGetDeviceIDs_checked(platform, CL_DEVICE_TYPE_ALL, effective_device + 1, devices, &received_devices);
+        assert(received_devices == effective_device + 1);
+        best_device = devices[effective_device];
+        free(devices);
+    } break;
+    case PRL_TARGET_DEVICE_CPU_ONLY:
+    case PRL_TARGET_DEVICE_CPU_THEN_GPU:
+    case PRL_TARGET_DEVICE_GPU_ONLY:
+    case PRL_TARGET_DEVICE_GPU_THEN_CPU: {
+        cl_platform_id best_platform = NULL;
+        cl_device_type best_type = 0;
+
+        cl_uint num_platforms = 0;
+        clGetPlatformIDs_checked(0, NULL, &num_platforms);
+        cl_platform_id *platforms = malloc(num_platforms * sizeof *platforms);
+        clGetPlatformIDs_checked(num_platforms, platforms, NULL);
+
+        for (int i = 0; i < num_platforms; i += 1) {
+            cl_uint num_devices = 0;
+            clGetDeviceIDs_checked(platforms[i], devtypes[global_config.device_choice], 0, NULL, &num_devices);
+            cl_device_id *devices = malloc(num_devices * sizeof *devices);
+            clGetDeviceIDs_checked(platforms[i], devtypes[global_config.device_choice], num_devices, devices, NULL);
+
+            for (int j = 0; j < num_devices; j += 1) {
+                cl_device_type devtype;
+                clGetDeviceInfo_checked(devices[j], CL_DEVICE_TYPE, sizeof devtype, &devtype, NULL);
+
+                if (!best_device || is_preferable_device(best_type, devtype)) {
+                    best_platform = platforms[i];
+                    best_device = devices[j];
+                    best_type = devtype;
+                }
+            }
+            free(devices);
+        }
+        free(platforms);
+
+        assert(best_platform);
+        assert(best_type);
+    } break;
+    default:
+        assert(false);
+    }
+    assert(best_device);
+
+    global_state.device = best_device;
+    global_state.context = clCreateContext_checked(NULL, 1, &best_device, __ocl_report_error, NULL);
 
     prl_initialized = 1;
     global_state.initialized = 1;
@@ -272,6 +449,41 @@ static void prl_init() {
 static void prl_release() {
     if (!prl_initialized)
         return;
+
+    prl_program program = global_state.programs;
+    while (program) {
+
+        prl_kernel kernel = program->kernels;
+        while (kernel) {
+            prl_kernel nextkernel = kernel->next;
+
+            clReleaseKernel(kernel->kernel);
+            free(kernel);
+
+            kernel = nextkernel;
+        }
+
+        prl_program nextprogram = program->next;
+        clReleaseProgram(program->program);
+        free(program);
+
+        program = nextprogram;
+    }
+
+    prl_scop scop = global_state.scops;
+    while (scop) {
+        prl_scop nextscop = scop->next;
+        free(scop);
+        scop = nextscop;
+    }
+
+    prl_mem mem = global_state.mems;
+    while (mem) {
+        prl_mem nextmem = mem->next;
+        clReleaseMemObject(mem->mem);
+        free(nextmem);
+        mem = nextmem;
+    }
 
     prl_initialized = 0;
 }
@@ -297,6 +509,7 @@ void prl_scop_leave(prl_scop_instance scopinst) {
     assert(scopinst);
     assert(prl_initialized);
 
+    clReleaseCommandQueue(scopinst->queue);
     free(scopinst);
 }
 

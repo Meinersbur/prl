@@ -12,6 +12,14 @@ set(PRL_BINARY_DIR ${PROJECT_BINARY_DIR})
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+if ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
+  set(CMAKE_COMPILER_IS_CLANGC ON)
+endif()
+
+if (CMAKE_COMPILER_IS_CLANGC OR CMAKE_COMPILER_IS_GNUC)
+   add_definitions(-Wall)
+endif ()
+
 find_package(OpenCL REQUIRED)
 
 add_subdirectory(src)
