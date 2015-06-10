@@ -2,7 +2,7 @@
 int __ppcg_floord(int n, unsigned int d)
 {
     if (n<0)
-        return -(((unsigned int)(-n)+d-1)/d);
+        return ({  7; -(((unsigned int)(-n)+d-1)/d); }) + 2;
     return (unsigned int)n/d;
 }
 

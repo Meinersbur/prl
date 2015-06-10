@@ -14,15 +14,15 @@
 
 static const char *PRL_TARGET_DEVICE = "PRL_TARGET_DEVICE";
 
-static const char *PRL_PROFILING = "PRL_PROFILING";
-static const char *PRL_CPU_PROFILING = "PRL_CPU_PROFILING";
-static const char *PRL_GPU_PROFILING = "PRL_GPU_PROFILING";
-static const char *PRL_PROFILING_PREFIX = "PRL_PROFILING_PREFIX";
-static const char *PRL_BLOCKING = "PRL_BLOCKING";
-static const char *PRL_TIMINGS_RUNS = "PRL_TIMINGS_RUNS";
-static const char *PRL_TIMINGS_DRY_RUNS = "PRL_TIMINGS_DRY_RUNS";
-static const char *PRL_TIMINGS_PREFIX = "PRL_TIMINGS_PREFIX";
-static const char *PRL_PREFIX = "PRL_PREFIX";
+//static const char *PRL_PROFILING = "PRL_PROFILING";
+//static const char *PRL_CPU_PROFILING = "PRL_CPU_PROFILING";
+//static const char *PRL_GPU_PROFILING = "PRL_GPU_PROFILING";
+//static const char *PRL_PROFILING_PREFIX = "PRL_PROFILING_PREFIX";
+//static const char *PRL_BLOCKING = "PRL_BLOCKING";
+//static const char *PRL_TIMINGS_RUNS = "PRL_TIMINGS_RUNS";
+//static const char *PRL_TIMINGS_DRY_RUNS = "PRL_TIMINGS_DRY_RUNS";
+//static const char *PRL_TIMINGS_PREFIX = "PRL_TIMINGS_PREFIX";
+//static const char *PRL_PREFIX = "PRL_PREFIX";
 
 enum prl_device_choice {
     PRL_TARGET_DEVICE_FIRST,
@@ -274,7 +274,7 @@ static cl_command_queue clCreateCommandQueue_checked_impl(cl_context context, cl
 #define clGetPlatformIDs_checked(num_entries, platforms, num_platforms) clGetPlatformIDs_checked_impl(num_entries, platforms, num_platforms, __FILE__, __LINE__)
 static void clGetPlatformIDs_checked_impl(cl_uint num_entries, cl_platform_id *platforms, cl_uint *num_platforms, const char *file, int line) {
     cl_int err = clGetPlatformIDs(num_entries, platforms, num_platforms);
-    if (err == CL_SUCCESS)
+    if (err != CL_SUCCESS)
         opencl_error(err, "clGetPlatformIDs", file, line);
 }
 
@@ -302,7 +302,13 @@ static cl_device_type devtypes[] = {
     [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
     [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
     [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_ALL,
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_ALL};
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] CL_DEVICE_TYPE_ALL};
+
+static cl_device_type preftypes[] = {
+    [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
+    [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU,
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] CL_DEVICE_TYPE_GPU};
 
 static void clGetDeviceInfo_checked(cl_device_id device,
                                     cl_device_info param_name,
@@ -319,30 +325,20 @@ static int is_preferable_device(cl_device_type old_type, cl_device_type alt_type
     if (!old_type)
         return 1;
 
-    switch (global_config.device_choice) {
-    case PRL_TARGET_DEVICE_CPU_ONLY:
-    case PRL_TARGET_DEVICE_CPU_THEN_GPU:
-        if (!(old_type & CL_DEVICE_TYPE_CPU) && (alt_type & CL_DEVICE_TYPE_CPU))
-            return 1;
+    cl_device_type preferred_type = preftypes[global_config.device_choice];
+if (!(old_type & preferred_type) && (alt_type & preferred_type))
+	return 1;
 
-        if (!(alt_type & CL_DEVICE_TYPE_CPU) && (old_type & CL_DEVICE_TYPE_CPU))
-            return -1;
+if (!(alt_type & preferred_type) && (old_type & preferred_type))
+	return -1;
 
-    case PRL_TARGET_DEVICE_GPU_ONLY:
-    case PRL_TARGET_DEVICE_GPU_THEN_CPU:
-        if (!(old_type & CL_DEVICE_TYPE_GPU) && (alt_type & CL_DEVICE_TYPE_GPU))
-            return 1;
-
-        if (!(alt_type & CL_DEVICE_TYPE_GPU) && (old_type & CL_DEVICE_TYPE_GPU))
-            return -1;
-    }
 
     return 0;
 }
 
-static void prl_init() {
-    cl_platform_id platform;
+static void prl_release();
 
+static void prl_init() {
     if (prl_initialized)
         return;
 
@@ -441,6 +437,7 @@ static void prl_init() {
 
     global_state.device = best_device;
     global_state.context = clCreateContext_checked(NULL, 1, &best_device, __ocl_report_error, NULL);
+	atexit(prl_release);
 
     prl_initialized = 1;
     global_state.initialized = 1;
@@ -564,7 +561,7 @@ void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programr
             size_t msgs_size;
             err = clGetProgramBuildInfo(clprogram, global_state.device, CL_PROGRAM_BUILD_LOG, 0, NULL, &msgs_size);
             char *msgs = malloc(msgs_size + 1);
-            err = clGetProgramBuildInfo(program->program, global_state.device, CL_PROGRAM_BUILD_LOG, msgs_size, msgs, NULL);
+            err = clGetProgramBuildInfo(clprogram, global_state.device, CL_PROGRAM_BUILD_LOG, msgs_size, msgs, NULL);
             assert(err >= 0);
             msgs[msgs_size] = '\0';
             fputs(msgs, stderr);
@@ -622,8 +619,6 @@ void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int dims, size
     assert(grid_size);
     assert(block_size);
 
-    prl_scop scop = scopinst->scop;
-
     for (int i = 0; i < n_args; i += 1) {
         struct prl_kernel_call_arg *arg = &args[i];
         cl_int err = -1;
@@ -648,6 +643,7 @@ void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int dims, size
                                    (global_config.gpu_profiling || global_config.blocking) ? &event : NULL);
     if (global_config.blocking) {
         cl_int err = clWaitForEvents(1, &event);
+	assert(err==CL_SUCCESS);
     }
 }
 
@@ -688,7 +684,6 @@ void prl_scop_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
     assert(scopinst);
     assert(mem);
 
-    prl_scop scop = scopinst->scop;
     opencl_check(clEnqueueWriteBuffer(scopinst->queue, mem->mem, CL_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL));
 }
 
@@ -696,7 +691,6 @@ void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
     assert(scopinst);
     assert(mem);
 
-    prl_scop scop = scopinst->scop;
     cl_int err = clEnqueueReadBuffer(scopinst->queue, mem->mem, CL_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL);
     assert(err >= 0);
 }
