@@ -50,9 +50,16 @@ struct prl_global_state {
     cl_device_id device;
     cl_context context;
 
+    // linked lists
     prl_program programs;
     prl_scop scops;
-    prl_mem mems;
+    prl_mem global_mems;
+};
+
+struct prl_stat {
+	double gpu_transfer_to_device;
+	double gpu_compute;
+	double gpu_transfer_to_host;
 };
 
 struct prl_scop_struct {
@@ -63,6 +70,8 @@ struct prl_scop_struct {
 struct prl_scop_inst_struct {
     prl_scop scop;
     cl_command_queue queue;
+
+    prl_mem local_mems;//linked list
 };
 
 struct prl_program_struct {
@@ -80,15 +89,71 @@ struct prl_kernel_struct {
     prl_kernel next;
 };
 
-struct prl_mem_struct {
-    prl_scop scop;
+enum prl_alloc_type {
+	alloc_type_none,
+	alloc_type_host_only,
+	alloc_type_dev_only,
 
-    cl_mem mem;
-    void *host_mem;
+	// Use clEnqueueWriteBuffer/clEnqueueReadBuffer
+	alloc_type_rwbuf,
+
+	// Use clEnqueueMapBuffer/clEnqueueUnmapMemObject
+	alloc_type_map,
+
+	// clSVMAlloc
+	alloc_type_svm,
+};
+
+enum prl_alloc_current_location {
+	// buffer content is undefined
+	loc_none,
+
+	loc_host,
+	loc_dev,
+
+	loc_transferring_to_host,
+	loc_transferring_to_dev
+};
+
+/* Describes a memory region */
+// Possible scopes:
+// 1. ad-hoc:   automatically allocated and released
+// 2. manually: user-allocated and released
+struct prl_mem_struct {
+    // If this is a ad-hoc allocation, this is the scope it is used in (and can be freed when on leaving)
+    prl_scop_instance scopinst;//RENAME: scopinst
+	//bool is_global;
     size_t size;
+    enum prl_alloc_type type;
+
+    cl_mem clmem; //RENAME: dev_clmem
+    bool dev_owning;
+    bool dev_readable;
+    bool dev_writable;
+
+    void *host_mem; //RENAME: host_ptr
+    bool host_owning;
+    bool host_readable;
+    bool host_writable;
+
+    // Where the current buffer content resides
+    enum prl_alloc_current_location loc;
+
+    // On entering a SCoP:
+    bool transfer_to_device;
+
+    // On leaving a SCoP:
+    bool transfer_to_host;
+    bool free_on_leave;
 
     prl_mem next;
 };
+
+struct prl_scopinst_mem_struct {
+	prl_mem mem_block;
+	bool owning;
+};
+
 
 static struct prl_global_config global_config = {0};
 
@@ -232,71 +297,357 @@ static const char *opencl_getErrorString(cl_int error) {
     }
 }
 
-#define opencl_check(call)                                \
-    do {                                                  \
-        cl_int err = (call);                              \
-        if (err < 0)                                      \
-            opencl_error(err, #call, __FILE__, __LINE__); \
-    } while (0)
+static void opencl_error(cl_int err, const char *call) __attribute__((noreturn)) ;
 
-#define opencl_check_err(call)                            \
-    do {                                                  \
-        cl_int err = CL_INT_MIN;                          \
-        (call);                                           \
-        if (err < 0)                                      \
-            opencl_error(err, #call, __FILE__, __LINE__); \
-    } while (0)
-
-static void opencl_error(cl_int err, const char *call, const char *file, int line) {
+static void opencl_error(cl_int err, const char *call)  {
     //TODO: Print chosen driver
+	//TODO: Allow customization on what happens on error
     const char *desc = opencl_getErrorString(err);
     if (desc) {
-        fprintf(stderr, "%s:%d\t%s\nOpenCL error %s\n", file, line, call, desc);
+        fprintf(stderr, "%s\nOpenCL error %s\n", call, desc);
     } else {
-        fprintf(stderr, "%s:%d\t%s\nOpenCL error %" PRIi32 "\n", file, line, call, err);
+        fprintf(stderr, "%s\nOpenCL error %" PRIi32 "\n", call, err);
     }
     exit(1);
 }
 
 static void __ocl_report_error(const char *errinfo, const void *private_info, size_t cb, void *user_data) {
-    fprintf(stderr, "OCL error: %s", errinfo);
+    fprintf(stderr, "OCL error: %s\n", errinfo);
+    exit(1);
 }
 
-#define clCreateCommandQueue_checked(context, device, properties) clCreateCommandQueue_checked_impl(context, device, properties, __FILE__, __LINE__)
-static cl_command_queue clCreateCommandQueue_checked_impl(cl_context context, cl_device_id device, cl_command_queue_properties properties, const char *file, int line) {
+
+
+#define CL_BLOCKING_TRUE CL_TRUE
+#define CL_BLOCKING_FALSE CL_FALSE
+
+static cl_command_queue clCreateCommandQueue_checked(cl_context context, cl_device_id device, cl_command_queue_properties properties) {
     cl_int err = CL_INT_MIN;
     cl_command_queue result = clCreateCommandQueue(context, device, properties, &err);
-    if (err || !result)
-        opencl_error(err, "clCreateCommandQueue", file, line);
+    if (err!=CL_SUCCESS || !result)
+        opencl_error(err, "clCreateCommandQueue");
     return result;
 }
 
-#define clGetPlatformIDs_checked(num_entries, platforms, num_platforms) clGetPlatformIDs_checked_impl(num_entries, platforms, num_platforms, __FILE__, __LINE__)
-static void clGetPlatformIDs_checked_impl(cl_uint num_entries, cl_platform_id *platforms, cl_uint *num_platforms, const char *file, int line) {
+
+static void clGetPlatformIDs_checked(cl_uint num_entries, cl_platform_id *platforms, cl_uint *num_platforms) {
     cl_int err = clGetPlatformIDs(num_entries, platforms, num_platforms);
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetPlatformIDs", file, line);
+        opencl_error(err, "clGetPlatformIDs");
 }
 
-#define clGetDeviceIDs_checked(platform, device_type, num_entries, devices, num_devices) clGetDeviceIDs_checked_impl(platform, device_type, num_entries, devices, num_devices, __FILE__, __LINE__)
-static void clGetDeviceIDs_checked_impl(cl_platform_id platform, cl_device_type device_type, cl_uint num_entries, cl_device_id *devices, cl_uint *num_devices, const char *file, int line) {
+
+static void clGetDeviceIDs_checked(cl_platform_id platform, cl_device_type device_type, cl_uint num_entries, cl_device_id *devices, cl_uint *num_devices) {
     cl_int err = clGetDeviceIDs(platform, device_type, num_entries, devices, num_devices);
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetDeviceIDs", file, line);
+        opencl_error(err, "clGetDeviceIDs");
 }
 
-#define clCreateContext_checked(properties, num_devices, devices, pfn_notify, user_data) clCreateContext_checked_impl(properties, num_devices, devices, pfn_notify, user_data, __FILE__, __LINE__)
-static cl_context clCreateContext_checked_impl(const cl_context_properties *properties,
+
+static cl_context clCreateContext_checked(const cl_context_properties *properties,
                                                cl_uint num_devices,
                                                const cl_device_id *devices,
                                                void(CL_CALLBACK *pfn_notify)(const char *, const void *, size_t, void *),
-                                               void *user_data, const char *file, int line) {
+                                               void *user_data) {
     cl_int err = CL_INT_MIN;
     cl_context result = clCreateContext(properties, num_devices, devices, pfn_notify, user_data, &err);
     if (err != CL_SUCCESS || !result)
-        opencl_error(err, "clCreateContext", file, line);
+        opencl_error(err, "clCreateContext");
     return result;
 }
+
+static void clEnqueueWriteBuffer_checked(cl_command_queue    command_queue ,
+                     cl_mem              buffer ,
+                     cl_bool             blocking_write ,
+                     size_t              offset ,
+                     size_t             size ,
+                     const void *       ptr ,
+                     cl_uint             num_events_in_wait_list ,
+                     const cl_event *    event_wait_list ,
+                     cl_event *          event ) {
+	cl_int err = clEnqueueWriteBuffer(command_queue, buffer, blocking_write, offset, size, ptr, num_events_in_wait_list, event_wait_list, event);
+	if (err!=CL_SUCCESS)
+		opencl_error(err, "clEnqueueWriteBuffer");
+}
+
+static  void clEnqueueReadBuffer_checked(cl_command_queue     command_queue ,
+                    cl_mem               buffer ,
+                    cl_bool              blocking_read ,
+                    size_t               offset ,
+                    size_t               size ,
+                    void *               ptr ,
+                    cl_uint              num_events_in_wait_list ,
+                    const cl_event *     event_wait_list ,
+                    cl_event *           event ){
+	cl_int err = clEnqueueReadBuffer(command_queue,buffer, blocking_read,offset,size,ptr,num_events_in_wait_list,event_wait_list,event);
+	if (err!=CL_SUCCESS)
+		opencl_error(err, "clEnqueueReadBuffer");
+}
+
+
+static void clEnqueueNDRangeKernel_checked(cl_command_queue command_queue,
+                                                cl_kernel kernel,
+                                                cl_uint work_dim,
+                                                const size_t *global_work_offset,
+                                                const size_t *global_work_size,
+                                                const size_t *local_work_size,
+                                                cl_uint num_events_in_wait_list,
+                                                const cl_event *event_wait_list,
+                                                cl_event *event) {
+    cl_int err = clEnqueueNDRangeKernel(command_queue, kernel, work_dim, global_work_offset, global_work_size, local_work_size, num_events_in_wait_list, event_wait_list, event);
+    if (err)
+        opencl_error(err, "clEnqueueNDRangeKernel");
+}
+
+static void * clEnqueueMapBuffer_checked(cl_command_queue  command_queue ,
+                   cl_mem            buffer ,
+                   cl_bool           blocking_map ,
+                   cl_map_flags      map_flags ,
+                   size_t            offset ,
+                   size_t            size ,
+                   cl_uint           num_events_in_wait_list ,
+                   const cl_event *  event_wait_list ,
+                   cl_event *       event ) {
+	cl_int err = CL_INT_MIN;
+	void *result =  clEnqueueMapBuffer(command_queue, buffer, blocking_map, map_flags, offset, size, num_events_in_wait_list,event_wait_list,event,&err);
+	if(err!=CL_SUCCESS)
+		opencl_error(err, "clEnqueueMapBuffer");
+	return result;
+}
+
+static void clFinish_checked(cl_command_queue  command_queue) {
+	assert(command_queue);
+	cl_int err = clFinish(command_queue);
+	if (err!=CL_SUCCESS)
+		opencl_error(err, "clFinish");
+}
+
+static void clReleaseCommandQueue_checked(cl_command_queue command_queue ) {
+	assert(command_queue);
+	cl_int err =clReleaseCommandQueue(command_queue);
+	if(err!=CL_SUCCESS)
+		opencl_error(err, "clReleaseCommandQueue");
+}
+
+static cl_mem clCreateBuffer_checked(cl_context context, cl_mem_flags flags, size_t size, void *host_ptr) {
+    cl_int err = CL_INT_MIN;
+    cl_mem result = clCreateBuffer(context, flags, size, host_ptr, &err);
+    if (err || !result)
+        opencl_error(err, "clCreateBuffer");
+    return result;
+}
+
+static void clEnqueueUnmapMemObject_checked(cl_command_queue  command_queue ,
+                        cl_mem            memobj ,
+                        void *            mapped_ptr ,
+                        cl_uint           num_events_in_wait_list ,
+                        const cl_event *   event_wait_list ,
+                        cl_event *         event) {
+	assert(command_queue);
+	assert(memobj);
+	assert(mapped_ptr);
+	assert(num_events_in_wait_list==0 || event_wait_list);
+	cl_int err = clEnqueueUnmapMemObject(command_queue, memobj, mapped_ptr, num_events_in_wait_list, event_wait_list, event);
+	if(err!=CL_SUCCESS)
+		opencl_error(err,"clEnqueueUnmapMemObject");
+}
+
+
+static void clWaitForEvents_checked(cl_uint              num_events ,                const cl_event *     event_list ) {
+	assert(num_events>=1);
+	assert(event_list);
+	cl_int err = clWaitForEvents(num_events, event_list);
+	if (err!=CL_SUCCESS)
+		opencl_error(err, "clWaitForEvents");
+}
+
+static void clWaitForEvent_checked(        cl_event  event ) {
+	assert(event);
+	clWaitForEvents_checked(1, &event);
+}
+
+
+
+//TODO: It is not necessary to know size at creation-time
+static prl_mem prl_mem_create_empty(size_t size, prl_scop_instance scopinst) {
+	assert(size>0);
+
+	prl_mem result = malloc(sizeof *result);
+	assert(result);
+	memset(result, 0, sizeof *result);
+
+	result->size = size;
+	result->transfer_to_device = true;
+	result->transfer_to_host = true;
+
+bool is_global = !scopinst;
+	if (is_global) {
+		// Global/user-managed memory
+		// Responsibility to free is at user's
+		result->next = global_state.global_mems;
+		global_state.global_mems = result;
+	} else {
+		// Local to SCoP instance
+		// prl_scop_leave will free this
+		result->next = scopinst->local_mems;
+		scopinst->local_mems = result;
+	}
+
+	return result;
+}
+
+
+
+static void prl_mem_alloc_host_only(prl_mem mem) {
+	assert(mem);
+	assert(mem->type==alloc_type_none);
+
+	mem->type = alloc_type_host_only;
+	mem->loc = loc_host;
+
+	mem->host_mem = malloc(mem->size);
+	mem->host_readable = true;
+	mem->host_writable = true;
+	mem->host_owning = true;
+
+
+}
+
+static void prl_mem_manage_host_only(prl_mem mem, void *host_mem, bool host_take_ownership) {
+	assert(mem);
+	assert(mem->type==alloc_type_none);
+	assert(host_mem);
+
+	mem->type = alloc_type_host_only;
+	mem->host_mem =  host_mem;
+	mem->host_readable = true;
+	mem->host_writable = true;
+	mem->host_owning = true;
+
+	mem->loc = loc_host;
+}
+
+static cl_mem_flags dev_rw_flags[] = { 0, CL_MEM_READ_ONLY, CL_MEM_WRITE_ONLY, CL_MEM_READ_WRITE };
+static void prl_mem_alloc_dev_only(prl_mem mem, bool readable, bool writable, void *initdata) {
+	assert(mem);
+	assert(mem->type==alloc_type_none);
+	assert(readable || writable);
+
+	mem->type = alloc_type_dev_only;
+	mem->clmem = clCreateBuffer_checked(global_state.context, dev_rw_flags[(readable?1:0) + (writable?2:0)] | (initdata?CL_MEM_COPY_HOST_PTR:0), mem->size, initdata);
+	mem->dev_owning = true;
+	mem->dev_readable = readable;
+	mem->dev_writable = writable;
+
+	mem->loc = loc_dev;
+}
+
+
+static void prl_mem_manage_dev_only(prl_mem mem, cl_mem dev_mem, bool dev_take_ownership, bool readable, bool writable) {
+		assert(mem);
+	assert(mem->type==alloc_type_none);
+	assert(dev_mem);
+	assert(readable || writable);
+
+	mem->type = alloc_type_dev_only;
+	mem->clmem = dev_mem;
+	mem->dev_owning = dev_take_ownership;
+	mem->dev_readable = readable;
+	mem->dev_writable = writable;
+
+	mem->loc = loc_dev;
+}
+
+
+
+static void prl_mem_alloc_map(prl_mem mem, bool host_readable, bool host_writable, bool dev_readable, bool dev_writable, prl_scop_instance scopinst) {
+	assert(mem);
+	assert(mem->type==alloc_type_none);
+	assert(host_readable | host_writable);
+	assert(dev_readable | dev_writable);
+
+	mem->type = alloc_type_map;
+	mem->loc = loc_host;
+
+	mem->clmem = clCreateBuffer_checked(global_state.context, dev_rw_flags[(dev_readable?1:0) + (dev_writable?2:0)] | CL_MEM_ALLOC_HOST_PTR, mem->size, NULL);
+	mem->dev_owning = true;
+	mem->dev_readable = dev_readable;
+	mem->dev_writable = dev_writable;
+
+	cl_command_queue clqueue;
+	if (scopinst)
+		clqueue = scopinst->queue;
+	 else
+	clqueue = clCreateCommandQueue_checked(global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+
+	mem->host_mem = clEnqueueMapBuffer_checked(clqueue, mem->clmem, CL_BLOCKING_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, mem->size, 0, NULL, NULL);
+	clFinish(clqueue);
+
+	if (!scopinst)
+	clReleaseCommandQueue(clqueue);
+	mem->host_owning = true;
+	mem->host_readable = host_readable;
+	mem->host_writable = host_writable;
+}
+
+
+static void prl_mem_manage_host_map(prl_mem mem, void *host_mem, bool host_take_ownership, bool host_readable, bool host_writable, bool dev_readable, bool dev_writable) {
+	assert(mem);
+	assert(mem->type==alloc_type_none);
+	assert(host_mem);
+	assert(host_readable | host_writable);
+	assert(dev_readable | dev_writable);
+
+	mem->type = alloc_type_map;
+	mem->loc = loc_host;
+
+	mem->clmem = clCreateBuffer_checked(global_state.context, dev_rw_flags[(dev_readable?1:0) + (dev_writable?2:0)] | CL_MEM_USE_HOST_PTR, mem->size, host_mem);
+	mem->dev_owning = true;
+	mem->dev_readable=dev_readable;
+	mem->dev_writable = dev_writable;
+
+	mem->host_mem = host_mem;
+	mem->host_owning =host_take_ownership;
+	mem->host_readable = host_readable;
+	mem->host_writable = host_writable;
+}
+
+
+
+static prl_mem prl_mem_lookup_global_ptr(void *host_ptr, size_t size) {
+	assert(host_ptr);
+	assert(size>0);
+
+	char *ptr_begin= host_ptr;
+	char *ptr_end = ptr_begin+size;
+
+	prl_mem mem = global_state.global_mems;
+	while (mem) {
+		assert(!mem->scopinst);
+
+		char *mem_begin = mem->host_mem;
+		char *mem_end = mem_begin+mem->size;
+		if (mem_begin <= ptr_begin && ptr_begin < mem_end) {
+			assert(mem_begin <= ptr_end && ptr_end < mem_end);
+			return mem;
+		}
+
+		assert(!(mem_begin <= ptr_end && ptr_end < mem_end));
+
+		mem = mem->next;
+	}
+
+	return NULL; // Not found
+}
+
+
+
+
+
+
+
+
+
 
 static cl_device_type devtypes[] = {
     [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
@@ -317,7 +668,7 @@ static void clGetDeviceInfo_checked(cl_device_id device,
                                     size_t *param_value_size_ret) {
     cl_int err = clGetDeviceInfo(device, param_name, param_value_size, param_value, param_value_size_ret);
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetDeviceInfo", NULL, 0);
+        opencl_error(err, "clGetDeviceInfo");
 }
 
 static int is_preferable_device(cl_device_type old_type, cl_device_type alt_type) {
@@ -331,7 +682,6 @@ if (!(old_type & preferred_type) && (alt_type & preferred_type))
 
 if (!(alt_type & preferred_type) && (old_type & preferred_type))
 	return -1;
-
 
     return 0;
 }
@@ -474,10 +824,10 @@ static void prl_release() {
         scop = nextscop;
     }
 
-    prl_mem mem = global_state.mems;
+    prl_mem mem = global_state.global_mems;
     while (mem) {
         prl_mem nextmem = mem->next;
-        clReleaseMemObject(mem->mem);
+        clReleaseMemObject(mem->clmem);
         free(nextmem);
         mem = nextmem;
     }
@@ -506,6 +856,7 @@ void prl_scop_leave(prl_scop_instance scopinst) {
     assert(scopinst);
     assert(prl_initialized);
 
+    clFinish(scopinst->queue);
     clReleaseCommandQueue(scopinst->queue);
     free(scopinst);
 }
@@ -540,7 +891,7 @@ static cl_program clCreateProgramWithSource_checked_impl(cl_context context, cl_
     cl_int err = CL_INT_MIN;
     cl_program result = clCreateProgramWithSource(context, count, strings, lengths, &err);
     if (err != 0)
-        opencl_error(err, "clCreateProgramWithSource", file, line);
+        opencl_error(err, "clCreateProgramWithSource");
     return result;
 }
 
@@ -596,22 +947,151 @@ void prl_scop_init_kernel(prl_scop_instance scop, prl_kernel *kernelref, prl_pro
     assert(kernel->kernel);
 }
 
-#define clEnqueueNDRangeKernel_checked(command_queue, kernel, work_dim, global_work_offset, global_work_size, local_work_size, num_events_in_wait_list, event_wait_list, event) clEnqueueNDRangeKernel_checked_impl(command_queue, kernel, work_dim, global_work_offset, global_work_size, local_work_size, num_events_in_wait_list, event_wait_list, event, __FILE__, __LINE__)
-static void clEnqueueNDRangeKernel_checked_impl(cl_command_queue command_queue,
-                                                cl_kernel kernel,
-                                                cl_uint work_dim,
-                                                const size_t *global_work_offset,
-                                                const size_t *global_work_size,
-                                                const size_t *local_work_size,
-                                                cl_uint num_events_in_wait_list,
-                                                const cl_event *event_wait_list,
-                                                cl_event *event, const char *file, int line) {
-    cl_int err = clEnqueueNDRangeKernel(command_queue, kernel, work_dim, global_work_offset, global_work_size, local_work_size, num_events_in_wait_list, event_wait_list, event);
-    if (err)
-        opencl_error(err, "clEnqueueNDRangeKernel", file, line);
+
+
+
+
+
+prl_mem prl_scop_get_mem(prl_scop_instance scopinst, void *host_mem, size_t size) {
+	assert(scopinst);
+	assert(host_mem);
+	assert(size>0);
+
+	prl_mem gmem = prl_mem_lookup_global_ptr(host_mem, size);
+	if (gmem)
+		return gmem;
+
+	// If it is not a user-allocated memory location, create a temporary local one
+	prl_mem lmem = prl_mem_create_empty(size, scopinst);
+	prl_mem_manage_host_map(lmem, host_mem, false, true, true, true, true);
+	return lmem;
 }
 
-void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int dims, size_t grid_size[static const restrict dims], size_t block_size[static const restrict dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]) {
+
+// Change location of buffer without necessarily preserving its contents
+static void ensure_on_device(prl_scop_instance scopinst, prl_mem mem) {
+   assert(scopinst);
+    assert(mem);
+
+    if (mem->loc==loc_dev) {
+	    // Nothing to do
+	    return;
+    }
+
+    switch(mem->type) {
+case alloc_type_rwbuf:
+	mem->loc = loc_dev;
+	break;
+
+case alloc_type_map: {
+	//TODO: Some method to tell to NOT transfer any data?
+	cl_event event = NULL;
+clEnqueueUnmapMemObject_checked(scopinst->queue, mem->clmem, mem->host_mem, 0, NULL, &event);
+		clWaitForEvent_checked(event);
+mem->loc = loc_dev;
+} break;
+
+	default:
+		assert(false);
+    }
+}
+
+// Change location of buffer without necessarily preserving its contents
+static void ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
+	 assert(scopinst);
+    assert(mem);
+
+        if (mem->loc==loc_host) {
+	    // Nothing to do
+	    return;
+    }
+
+        switch(mem->type) {
+case alloc_type_rwbuf:
+	mem->loc = loc_host;
+	break;
+
+case alloc_type_map:{
+	void *host_ptr = clEnqueueMapBuffer_checked(scopinst->queue, mem->clmem, CL_BLOCKING_TRUE, (mem->host_writable ? CL_MAP_WRITE : 0), 0, mem->size, 0, NULL, NULL);
+	assert(host_ptr == mem->host_mem); mem->loc = loc_host;
+}break;
+
+	default:
+		assert(false);
+    }
+}
+
+
+void prl_scop_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
+    assert(scopinst);
+    assert(mem);
+
+    if (mem->loc==loc_dev) {
+	    // Nothing to do
+	    return;
+    }
+
+    switch(mem->type) {
+	case alloc_type_rwbuf:
+		clEnqueueWriteBuffer_checked(scopinst->queue, mem->clmem, CL_BLOCKING_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL);
+		mem->loc = loc_dev;
+		break;
+
+	case alloc_type_map:{
+		cl_event event = NULL;
+		clEnqueueUnmapMemObject_checked(scopinst->queue, mem->clmem, mem->host_mem, 0, NULL, &event);
+		clWaitForEvent_checked(event);
+		mem->loc = loc_dev;
+	}break;
+
+	case alloc_type_dev_only:
+		// Nothing to do
+		break;
+
+	case alloc_type_host_only:
+	case alloc_type_none:
+	case alloc_type_svm:
+		assert(false);
+    }
+
+    assert(mem->loc==loc_dev || mem->loc==loc_transferring_to_dev);
+}
+
+void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
+    assert(scopinst);
+    assert(mem);
+
+    if (mem->loc==loc_host) {
+    // Already on host
+	    return;
+}
+
+    switch(mem->type) {
+	case alloc_type_rwbuf:
+		  clEnqueueReadBuffer_checked(scopinst->queue, mem->clmem, CL_BLOCKING_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL);
+		  mem->loc = loc_host;
+		  break;
+
+	case alloc_type_map: {
+		void *mappedptr = clEnqueueMapBuffer_checked(scopinst->queue, mem->clmem,  CL_BLOCKING_TRUE, (mem->dev_readable ? CL_MAP_READ : 0) | (mem->dev_writable ? CL_MAP_WRITE : 0), 0, mem->size, 0, NULL, NULL);
+		assert(mappedptr == mem->host_mem && "clEnqueueMapBuffer should always return the same pointer");
+		mem->loc = loc_host;
+	} break;
+
+		case alloc_type_host_only:
+		// Nothing to do
+		break;
+
+	case alloc_type_dev_only:
+	case alloc_type_none:
+		case alloc_type_svm:
+		assert(false);
+    }
+assert(mem->loc==loc_host|| mem->loc==loc_transferring_to_host);
+}
+
+
+    void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int dims, size_t grid_size[static const restrict dims], size_t block_size[static const restrict dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]) {
     assert(scopinst);
     assert(kernel);
     assert(dims > 0);
@@ -626,9 +1106,12 @@ void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int dims, size
         case prl_kernel_call_arg_value:
             err = clSetKernelArg(kernel->kernel, i, arg->size, arg->data);
             break;
-        case prl_kernel_call_arg_mem:
-            err = clSetKernelArg(kernel->kernel, i, sizeof(cl_mem), &arg->mem->mem);
-            break;
+        case prl_kernel_call_arg_mem: {
+		assert(arg->mem);
+		assert(arg->mem->clmem);
+		ensure_on_device(scopinst, arg->mem);
+            err = clSetKernelArg(kernel->kernel, i, sizeof(cl_mem), &arg->mem->clmem);
+        } break;
         }
         assert(err >= 0);
     }
@@ -647,55 +1130,5 @@ void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int dims, size
     }
 }
 
-#define clCreateBuffer_checked(context, flags, size, host_pre) clCreateBuffer_checked_impl(context, flags, size, host_pre, __FILE__, __LINE__)
-static cl_mem clCreateBuffer_checked_impl(cl_context context, cl_mem_flags flags, size_t size, void *host_ptr, const char *file, int line) {
-    cl_int err = CL_INT_MIN;
-    cl_mem result = clCreateBuffer(context, flags, size, host_ptr, &err);
-    if (err || !result)
-        opencl_error(err, "clCreateBuffer", file, line);
-    return result;
-}
 
-void prl_scop_mem_init(prl_scop_instance scopinst, prl_mem *memref, void *host_mem, size_t size) {
-    assert(scopinst);
-    assert(memref);
-    assert(host_mem);
 
-    prl_scop scop = scopinst->scop;
-
-    prl_mem mem = *memref;
-    if (!mem) {
-
-        cl_mem clmem = clCreateBuffer_checked(global_state.context, CL_MEM_READ_WRITE, size, NULL);
-        assert(clmem);
-
-        mem = malloc(sizeof *mem);
-        mem->scop = scop;
-        mem->mem = clmem;
-        mem->host_mem = host_mem;
-        mem->size = size;
-        *memref = mem;
-    }
-    assert(mem->scop);
-    assert(mem->mem);
-}
-
-void prl_scop_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
-    assert(scopinst);
-    assert(mem);
-
-    opencl_check(clEnqueueWriteBuffer(scopinst->queue, mem->mem, CL_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL));
-}
-
-void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
-    assert(scopinst);
-    assert(mem);
-
-    cl_int err = clEnqueueReadBuffer(scopinst->queue, mem->mem, CL_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL);
-    assert(err >= 0);
-}
-
-void prl_scop_host_wait(prl_scop_instance scop, prl_mem mem) {
-    assert(scop);
-    assert(mem);
-}

@@ -349,7 +349,7 @@ static void kernel_correlation(int m, int n,
             if (size_data < sizeof(double))
                 size_data = sizeof(double);
             //dev_data = clCreateBuffer(context, CL_MEM_READ_WRITE, size_data, NULL, &err);
-            prl_scop_mem_init(__ppcg_scopinst, &__ppcg_dev_data, data, size_data);
+            __ppcg_dev_data = prl_scop_get_mem(__ppcg_scopinst, data, size_data);
             //openclCheckReturn(err);
         }
         {
@@ -357,7 +357,7 @@ static void kernel_correlation(int m, int n,
             if (size_mean < sizeof(double))
                 size_mean = sizeof(double);
             //dev_mean = clCreateBuffer(context, CL_MEM_READ_WRITE, size_mean, NULL, &err);
-            prl_scop_mem_init(__ppcg_scopinst, &__ppcg_dev_mean, mean, size_mean);
+            __ppcg_dev_mean = prl_scop_get_mem(__ppcg_scopinst, mean, size_mean);
             //openclCheckReturn(err);
         }
         {
@@ -365,7 +365,7 @@ static void kernel_correlation(int m, int n,
             if (size_stddev < sizeof(double))
                 size_stddev = sizeof(double);
             //dev_stddev = clCreateBuffer(context, CL_MEM_READ_WRITE, size_stddev, NULL, &err);
-            prl_scop_mem_init(__ppcg_scopinst, &__ppcg_dev_stddev, stddev, size_stddev);
+            __ppcg_dev_stddev = prl_scop_get_mem(__ppcg_scopinst, stddev, size_stddev);
             //openclCheckReturn(err);
         }
         {
@@ -373,7 +373,7 @@ static void kernel_correlation(int m, int n,
             if (size_symmat < sizeof(double))
                 size_symmat = sizeof(double);
             //dev_symmat = clCreateBuffer(context, CL_MEM_READ_WRITE, size_symmat, NULL, &err);
-            prl_scop_mem_init(__ppcg_scopinst, &__ppcg_dev_symmat, symmat, size_symmat);
+            __ppcg_dev_symmat = prl_scop_get_mem(__ppcg_scopinst, symmat, size_symmat);
             //openclCheckReturn(err);
         }
 
@@ -612,9 +612,9 @@ static void kernel_correlation(int m, int n,
             // openclCheckReturn(clEnqueueReadBuffer(queue, dev_symmat, CL_TRUE, 0, (m >= 2 ? m : 1) * (m >= 2 ? m : 1) * sizeof(double), symmat, 0, NULL, NULL));
             prl_scop_device_to_host(__ppcg_scopinst, __ppcg_dev_symmat);
 
-            prl_scop_host_wait(__ppcg_scopinst, __ppcg_dev_symmat);
+            //prl_scop_host_wait(__ppcg_scopinst, __ppcg_dev_symmat);
 
-            symmat[m - 1][m - 1] = 1.0;
+            //symmat[m - 1][m - 1] = 1.0;
         }
         //openclCheckReturn(clReleaseMemObject(dev_data));
         //openclCheckReturn(clReleaseMemObject(dev_mean));

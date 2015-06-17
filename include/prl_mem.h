@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 struct prl_mem_struct;
-typedef struct prl_mem_struct *prl_mem;
+typedef struct prl_mem_struct *prl_mem; //RENAME: prl_mem_block
 
 enum prl_mem_access {
     prl_mem_access_none = 0,
