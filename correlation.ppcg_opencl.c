@@ -305,8 +305,6 @@ static void kernel_correlation(int m, int n,
                                DATA_TYPE POLYBENCH_2D(symmat, M, M, m, m),
                                DATA_TYPE POLYBENCH_1D(mean, M, m),
                                DATA_TYPE POLYBENCH_1D(stddev, M, m)) {
-    int i, j, j1, j2;
-
     DATA_TYPE eps = 0.1f;
 
 #define sqrt_of_array_cell(x, j) sqrt(x[j])
@@ -349,7 +347,7 @@ static void kernel_correlation(int m, int n,
             if (size_data < sizeof(double))
                 size_data = sizeof(double);
             //dev_data = clCreateBuffer(context, CL_MEM_READ_WRITE, size_data, NULL, &err);
-            __ppcg_dev_data = prl_scop_get_mem(__ppcg_scopinst, data, size_data);
+            __ppcg_dev_data = prl_scop_get_mem(__ppcg_scopinst, data, size_data, "data");
             //openclCheckReturn(err);
         }
         {
@@ -357,7 +355,7 @@ static void kernel_correlation(int m, int n,
             if (size_mean < sizeof(double))
                 size_mean = sizeof(double);
             //dev_mean = clCreateBuffer(context, CL_MEM_READ_WRITE, size_mean, NULL, &err);
-            __ppcg_dev_mean = prl_scop_get_mem(__ppcg_scopinst, mean, size_mean);
+            __ppcg_dev_mean = prl_scop_get_mem(__ppcg_scopinst, mean, size_mean, "mean");
             //openclCheckReturn(err);
         }
         {
@@ -365,7 +363,7 @@ static void kernel_correlation(int m, int n,
             if (size_stddev < sizeof(double))
                 size_stddev = sizeof(double);
             //dev_stddev = clCreateBuffer(context, CL_MEM_READ_WRITE, size_stddev, NULL, &err);
-            __ppcg_dev_stddev = prl_scop_get_mem(__ppcg_scopinst, stddev, size_stddev);
+            __ppcg_dev_stddev = prl_scop_get_mem(__ppcg_scopinst, stddev, size_stddev, "stddev");
             //openclCheckReturn(err);
         }
         {
@@ -373,7 +371,7 @@ static void kernel_correlation(int m, int n,
             if (size_symmat < sizeof(double))
                 size_symmat = sizeof(double);
             //dev_symmat = clCreateBuffer(context, CL_MEM_READ_WRITE, size_symmat, NULL, &err);
-            __ppcg_dev_symmat = prl_scop_get_mem(__ppcg_scopinst, symmat, size_symmat);
+            __ppcg_dev_symmat = prl_scop_get_mem(__ppcg_scopinst, symmat, size_symmat, "symmat");
             //openclCheckReturn(err);
         }
 
@@ -405,7 +403,7 @@ static void kernel_correlation(int m, int n,
                 //openclCheckReturn(clEnqueueNDRangeKernel(queue, kernel0, 1, NULL, global_work_size, block_size, 0, NULL, NULL));
                 //openclCheckReturn(clReleaseKernel(kernel0));
                 //clFinish(queue);
-                prl_scop_call(__ppcg_scopinst, __ppcg_kernel0, 1, grid_size, block_size, 4, __ppcg_kernel0_args);
+                prl_scop_call(__ppcg_scopinst, __ppcg_kernel0, 1, grid_size, 1, block_size, 4, __ppcg_kernel0_args);
             }
 
             {
@@ -427,7 +425,7 @@ static void kernel_correlation(int m, int n,
                 //openclCheckReturn(clEnqueueNDRangeKernel(queue, kernel1, 1, NULL, global_work_size, block_size, 0, NULL, NULL));
                 //openclCheckReturn(clReleaseKernel(kernel1));
                 //clFinish(queue);
-                prl_scop_call(__ppcg_scopinst, __ppcg_kernel1, 1, grid_size, block_size, 3, __ppcg_kernel1_args);
+                prl_scop_call(__ppcg_scopinst, __ppcg_kernel1, 1, grid_size, 1, block_size, 3, __ppcg_kernel1_args);
             }
 
             {
@@ -455,7 +453,7 @@ static void kernel_correlation(int m, int n,
                 //openclCheckReturn(clEnqueueNDRangeKernel(queue, kernel2, 1, NULL, global_work_size, block_size, 0, NULL, NULL));
                 //openclCheckReturn(clReleaseKernel(kernel2));
                 //clFinish(queue);
-                prl_scop_call(__ppcg_scopinst, __ppcg_kernel2, 1, grid_size, block_size, 6, __ppcg_kernel2_args);
+                prl_scop_call(__ppcg_scopinst, __ppcg_kernel2, 1, grid_size, 1, block_size, 6, __ppcg_kernel2_args);
             }
 
             {
@@ -479,7 +477,7 @@ static void kernel_correlation(int m, int n,
                 //openclCheckReturn(clEnqueueNDRangeKernel(queue, kernel3, 1, NULL, global_work_size, block_size, 0, NULL, NULL));
                 //openclCheckReturn(clReleaseKernel(kernel3));
                 //clFinish(queue);
-                prl_scop_call(__ppcg_scopinst, __ppcg_kernel3, 1, grid_size, block_size, 4, __ppcg_kernel3_args);
+                prl_scop_call(__ppcg_scopinst, __ppcg_kernel3, 1, grid_size, 1, block_size, 4, __ppcg_kernel3_args);
             }
 
             {
@@ -503,7 +501,7 @@ static void kernel_correlation(int m, int n,
                 //openclCheckReturn(clEnqueueNDRangeKernel(queue, kernel4, 1, NULL, global_work_size, block_size, 0, NULL, NULL));
                 //openclCheckReturn(clReleaseKernel(kernel4));
                 //clFinish(queue);
-                prl_scop_call(__ppcg_scopinst, __ppcg_kernel4, 1, grid_size, block_size, 4, __ppcg_kernel4_args);
+                prl_scop_call(__ppcg_scopinst, __ppcg_kernel4, 1, grid_size, 1, block_size, 4, __ppcg_kernel4_args);
             }
 
             if (n >= 1) {
@@ -529,7 +527,7 @@ static void kernel_correlation(int m, int n,
                 //openclCheckReturn(clEnqueueNDRangeKernel(queue, kernel5, 2, NULL, global_work_size, block_size, 0, NULL, NULL));
                 //openclCheckReturn(clReleaseKernel(kernel5));
                 //clFinish(queue);
-                prl_scop_call(__ppcg_scopinst, __ppcg_kernel5, 1, grid_size, block_size, 5, __ppcg_kernel5_args);
+                prl_scop_call(__ppcg_scopinst, __ppcg_kernel5, 1, grid_size, 1, block_size, 5, __ppcg_kernel5_args);
             }
 
             if (m >= 2) {
@@ -554,7 +552,7 @@ static void kernel_correlation(int m, int n,
                     //openclCheckReturn(clEnqueueNDRangeKernel(queue, kernel6, 2, NULL, global_work_size, block_size, 0, NULL, NULL));
                     //openclCheckReturn(clReleaseKernel(kernel6));
                     //clFinish(queue);
-                    prl_scop_call(__ppcg_scopinst, __ppcg_kernel6, 2, grid_size, block_size, 4, __ppcg_kernel6_args);
+                    prl_scop_call(__ppcg_scopinst, __ppcg_kernel6, 2, grid_size, 2, block_size, 4, __ppcg_kernel6_args);
                 }
 
                 {
@@ -576,7 +574,7 @@ static void kernel_correlation(int m, int n,
                     //openclCheckReturn(clEnqueueNDRangeKernel(queue, kernel7, 2, NULL, global_work_size, block_size, 0, NULL, NULL));
                     //openclCheckReturn(clReleaseKernel(kernel7));
                     //clFinish(queue);
-                    prl_scop_call(__ppcg_scopinst, __ppcg_kernel7, 2, grid_size, block_size, 3, __ppcg_kernel7_args);
+                    prl_scop_call(__ppcg_scopinst, __ppcg_kernel7, 2, grid_size,2, block_size, 3, __ppcg_kernel7_args);
                 }
 
                 {
@@ -598,7 +596,7 @@ static void kernel_correlation(int m, int n,
                     //openclCheckReturn(clEnqueueNDRangeKernel(queue, kernel8, 1, NULL, global_work_size, block_size, 0, NULL, NULL));
                     //openclCheckReturn(clReleaseKernel(kernel8));
                     //clFinish(queue);
-                    prl_scop_call(__ppcg_scopinst, __ppcg_kernel8, 1, grid_size, block_size, 3, __ppcg_kernel8_args);
+                    prl_scop_call(__ppcg_scopinst, __ppcg_kernel8, 1, grid_size, 1, block_size, 3, __ppcg_kernel8_args);
                 }
             }
             if (n >= 1) {

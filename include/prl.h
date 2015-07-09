@@ -4,6 +4,10 @@
 #include "prl_scop.h"
 #include "prl_mem.h"
 #include "prl_perf.h"
+#include "prl_opencl.h"
+
+
+
 
 //TODO: Remove __ppcg_*
 static inline int __ppcg_floord(int n, unsigned int d) {

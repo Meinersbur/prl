@@ -6,8 +6,8 @@ project("prl" C)
 set(PACKAGE_VERSION "0.0.1")
 set(PACKAGE_BUGREPORT "prl@meinersbur.de")
 
-set(PRL_SOURCE_DIR ${PROJECT_SOURCE_DIR})
-set(PRL_BINARY_DIR ${PROJECT_BINARY_DIR})
+set(PRL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(PRL_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -24,5 +24,7 @@ find_package(OpenCL REQUIRED)
 
 add_subdirectory(src)
 
-add_executable(correlation correlation.ppcg_opencl.c)
-target_link_libraries(correlation prl_opencl)
+add_executable(correlation_ocl correlation.ppcg_opencl.c)
+target_link_libraries(correlation_ocl prl_opencl)
+
+
