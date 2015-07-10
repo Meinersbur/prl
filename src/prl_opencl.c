@@ -1313,6 +1313,7 @@ static prl_mem prl_mem_create_empty(size_t size,const char *name,  prl_scop_inst
 		// Local to SCoP instance
 		// prl_scop_leave will free this
 		memlist_push_front(&scopinst->local_mems, result);
+		result->scopinst = scopinst;
 	}
 
 	return result;
@@ -2279,7 +2280,7 @@ void prl_scop_program_from_file(prl_scop_instance scopinst, prl_program *program
     fclose(file);
 
     str[size] = '\0';
-    prl_scop_program_from_str(scopinst, programref, str);
+    prl_scop_program_from_str(scopinst, programref, str, size+1);
     free_checked(scopinst, str);
 
     prl_program program = *programref;
@@ -2298,7 +2299,8 @@ static cl_program clCreateProgramWithSource_checked_impl(cl_context context, cl_
 }
 
 
-void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programref, const char *str) {
+// str_size including NULL character
+void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programref, const char *str, size_t str_size) {
     assert(scopinst);
     assert(programref);
     assert(str);
@@ -2306,8 +2308,11 @@ void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programr
 
     prl_program program = *programref;
     if (!program) {
-        size_t size = strlen(str);
-        cl_program clprogram = clCreateProgramWithSource_checked(global_state.context, 1, &str, &size);
+	  if (!str_size)
+		str_size = strlen(str);
+	 else
+		 str_size -= 1;
+        cl_program clprogram = clCreateProgramWithSource_checked(global_state.context, 1, &str, &str_size);
 
         cl_int err = clBuildProgram(clprogram, 0, NULL, NULL, NULL, NULL);
         if (err < 0) { //TODO: Unified error handling
