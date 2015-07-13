@@ -45,7 +45,7 @@ void prl_scop_leave(prl_scop_instance scop);      // fixed
 void prl_scop_program_from_file(prl_scop_instance scop, prl_program *program, const char *filename); //TODO: Independent of SCOPinstance
 void prl_scop_program_from_str(prl_scop_instance scop, prl_program *program, const char *str, size_t str_size);
 void prl_scop_init_kernel(prl_scop_instance scop, prl_kernel *kernel, prl_program program, const char *kernelname);
-void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims, size_t grid_size[static const restrict grid_dims],  int block_dims, size_t block_size[static const restrict block_dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]);
+void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims, size_t grid_size[static const restrict grid_dims], int block_dims, size_t block_size[static const restrict block_dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]);
 
 // Scenarios to cover:
 //   host+malloc    <-> device+allocation_per_scop
