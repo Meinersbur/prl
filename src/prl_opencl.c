@@ -1114,6 +1114,13 @@ static void stat_compute_medians(double medians[static const restrict STAT_ENTRI
 }
 
 static bool is_valid_loc(prl_mem mem) {
+	if (mem->loc & loc_bit_host_is_current)
+		if (!mem->host_mem)
+			return false;
+	if (mem->loc & loc_bit_dev_is_current)
+		if (!mem->clmem)
+			return false;
+
     switch (mem->type) {
     case alloc_type_none:
         return mem->loc == loc_none;
@@ -1309,7 +1316,7 @@ static prl_mem prl_mem_create_empty(size_t size, const char *name, prl_scop_inst
 }
 
 
-static void prl_mem_init_rwbuf(prl_scop_instance scopinst, prl_mem mem,
+static void prl_mem_init_rwbuf( prl_mem mem,
 			       void *host_mem, bool host_owning,  bool host_exposed , bool host_readable, bool host_writable,
 			       cl_mem dev_mem,  bool dev_owning, bool dev_readable,  bool dev_exposed, bool dev_writable,
 			       enum prl_alloc_current_location loc) {
@@ -1319,6 +1326,9 @@ static void prl_mem_init_rwbuf(prl_scop_instance scopinst, prl_mem mem,
 	assert(loc == loc_host || loc == loc_dev || loc == loc_none);
 
 	mem->type = alloc_type_rwbuf;
+	mem->loc = loc;
+	mem->transfer_to_device = true;
+	mem->transfer_to_host = true;
 
 	// host side
 	mem->host_mem = host_mem;
@@ -1334,14 +1344,10 @@ static void prl_mem_init_rwbuf(prl_scop_instance scopinst, prl_mem mem,
 	mem->dev_readable = dev_readable;
 	mem->dev_writable = dev_writable;
 
-	mem->loc = loc;
-	mem->transfer_to_device = true;
-	mem->transfer_to_host = true;
-
 	assert(is_valid_loc(mem));
 }
 
-static void prl_mem_init_rwbuf_host(prl_scop_instance scopinst, prl_mem mem,
+static void prl_mem_init_rwbuf_host( prl_mem mem,
 			       void *host_mem, bool host_owning, bool host_exposed, bool host_readable, bool host_writable,
 			       bool dev_readable, bool dev_writable,
 			       enum prl_alloc_current_location loc){
@@ -1372,7 +1378,37 @@ static void prl_mem_init_rwbuf_host(prl_scop_instance scopinst, prl_mem mem,
 }
 
 
-static void prl_mem_init_rwbuf_none(prl_scop_instance scopinst, prl_mem mem,
+static void prl_mem_init_rwbuf_dev( prl_mem mem,
+			       bool host_readable, bool host_writable,
+			       cl_mem dev_mem,  bool dev_owning, bool dev_readable,  bool dev_exposed, bool dev_writable,
+			       enum prl_alloc_current_location loc) {
+	assert(mem);
+	assert(dev_mem);
+	assert(loc == loc_dev || loc == loc_none);
+
+	mem->type = alloc_type_rwbuf;
+	mem->loc = loc;
+	mem->transfer_to_device = true;
+	mem->transfer_to_host = true;
+
+	// host side
+	mem->host_mem = NULL;
+	mem->host_owning = false;
+	mem->host_exposed = false;
+	mem->host_readable = host_readable;
+	mem->host_writable = host_writable;
+
+	// dev side
+	mem->clmem = dev_mem;
+	mem->dev_owning = dev_owning;
+	mem->dev_exposed = dev_exposed;
+	mem->dev_readable = dev_readable;
+	mem->dev_writable = dev_writable;
+
+	assert(is_valid_loc(mem));
+}
+
+static void prl_mem_init_rwbuf_none( prl_mem mem,
 			       bool host_readable, bool host_writable,
 			       bool dev_readable, bool dev_writable){
 	assert(mem);
@@ -1842,7 +1878,12 @@ void prl_release() {
         mem = nextmem;
     }
 #endif
-    assert(!global_state.global_mems && "Forgot to prl_release some memory");
+#ifndef NDEBUG
+	if (global_state.global_mems) {
+		fputs("\nMemory leak! Some PRL global memory has not been freed using prl_free or prl_mem_free\n", stderr);
+	}
+#endif
+
 
     if (dumping) {
         if (global_state.config.cpu_profiling) {
@@ -2219,7 +2260,10 @@ static void ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
 
     switch (mem->type) {
     case alloc_type_rwbuf:
-        mem->loc = loc_host;
+	    if (mem->host_mem)
+		mem->loc = loc_host;
+	    else
+		    mem->loc = loc_none; // There is no host memory to be updated, data is just lost.
         break;
 
     case alloc_type_map: {
@@ -2258,6 +2302,8 @@ static void mem_event_finished(prl_scop_instance scopinst, prl_mem mem) {
     default:
         break;
     }
+
+    assert(is_valid_loc(mem));
 }
 
 void prl_scop_leave(prl_scop_instance scopinst) {
@@ -2432,12 +2478,12 @@ prl_mem prl_scop_get_mem(prl_scop_instance scopinst, void *host_mem, size_t size
     // If it is not a user-allocated memory location, create a temporary local one
     prl_mem lmem = prl_mem_create_empty(size, name, scopinst);
     if (host_mem) {
-	     prl_mem_init_rwbuf_host(scopinst, lmem,
+	     prl_mem_init_rwbuf_host( lmem,
 		       host_mem, false, true, true, true,
 		       true, true, loc_host);
     } else {
 	    // No host memory available
-	         prl_mem_init_rwbuf_none(scopinst, lmem,
+	         prl_mem_init_rwbuf_none( lmem,
 		       true, true,
 		       true, true);
     }
@@ -2794,7 +2840,7 @@ void *prl_alloc(size_t size) {
     prl_init(); // TODO: Lazy initialization at first scop enter? Requires global_state.global_mems to become separate and device memory to be allocated lazily
 
     prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-    prl_mem_init_rwbuf_none(NOSCOPINST, mem, true, true, true, true);
+    prl_mem_init_rwbuf_none( mem, true, true, true, true);
     return get_exposed_host(NOSCOPINST, mem);
 }
 
@@ -2814,7 +2860,8 @@ prl_mem prl_mem_manage_host(size_t size, void *host_ptr, enum prl_mem_flags flag
     assert(host_ptr);
 
     prl_mem gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-    prl_mem_manage_host_only(gmem, host_ptr, false);
+    prl_mem_init_rwbuf_host( gmem, host_ptr, false, true, true, true, true, true, loc_host);
+	assert(is_valid_loc(gmem));
     return gmem;
 }
 
@@ -2829,6 +2876,7 @@ prl_mem prl_opencl_mem_manage_dev(size_t size, cl_mem dev_ptr, enum prl_mem_flag
     assert(dev_ptr);
 
     prl_mem gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
+    prl_mem_init_rwbuf_dev( gmem, true, true, dev_ptr, false, true, true, true,  loc_dev );
     prl_mem_manage_dev_only(gmem, dev_ptr, flags & prl_mem_dev_take, !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite));
     gmem->dev_exposed = true;
     return gmem;
