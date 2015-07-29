@@ -105,6 +105,7 @@ enum prl_stat_entry {
     stat_cpu_clGetEventInfo,
     stat_cpu_clGetPlatformInfo,
     stat_cpu_clCreateKernel,
+    stat_cpu_clSetKernelArg,
     stat_cpu_clReleaseKernel,
     stat_cpu_clGetDeviceInfo,
 
@@ -234,6 +235,7 @@ static const char *statname[] = {
     [stat_cpu_clGetEventInfo] = "clGetEventInfo",
     [stat_cpu_clGetPlatformInfo] = "clGetPlatformInfo",
     [stat_cpu_clCreateKernel] = "clCreateKernel",
+    [stat_cpu_clSetKernelArg] = "clSetKernelArg",
     [stat_cpu_clReleaseKernel] = "clReleaseKernel",
     [stat_cpu_clGetDeviceInfo] = "clGetDeviceInfo",
 
@@ -454,29 +456,28 @@ struct prl_mem_struct {
     enum prl_alloc_type type;
     cl_event transferevent;
 
-    cl_mem clmem; //RENAME: dev_clmem
-    bool dev_owning;
-    bool dev_readable;
-    bool dev_writable;
-    //bool dev_dirty;
-    //bool dev_current;
-    bool dev_exposed;
     void *host_mem;   //RENAME: host_ptr
     bool host_owning; // Whether to free(host_mem) when releasing this prl_mem
+     bool host_exposed;
     bool host_readable;
     bool host_writable;
     //bool host_dirty;
     //bool host_current;
-    bool host_exposed;
+
+    cl_mem clmem; //RENAME: dev_clmem
+    bool dev_owning;
+     bool dev_exposed;
+    bool dev_readable;
+    bool dev_writable;
+    //bool dev_dirty;
+    //bool dev_current;
+
     // Where the current buffer content resides
     enum prl_alloc_current_location loc;
 
-    // On entering a SCoP:
-    bool transfer_to_device;
 
-    // On leaving a SCoP:
-    bool transfer_to_host;
-    bool free_on_leave;
+    bool transfer_to_device;     // On entering a SCoP:
+    bool transfer_to_host;   // On leaving a SCoP:
 
     prl_mem mem_prev, mem_next; // of prl_scop_instance->local_mems OR global_state.global_mems
 };
@@ -975,6 +976,23 @@ static cl_kernel clCreateKernel_checked(prl_scop_instance scopinst, cl_program p
     return result;
 }
 
+ static void clSetKernelArg_checked( prl_scop_instance scopinst,	cl_kernel kernel,
+  	cl_uint arg_index,
+  	size_t arg_size,
+  	const void *arg_value) {
+	 assert(kernel);
+	 assert(arg_size > 0);
+	 assert(arg_value);
+
+	     prl_time_t start = timestamp();
+	 cl_int err = clSetKernelArg(kernel,arg_index, arg_size, arg_value);
+	     prl_time_t stop = timestamp();
+    add_time(scopinst, stat_cpu_clSetKernelArg, stop - start);
+
+        if (err != CL_SUCCESS)
+        opencl_error(err, "clSetKernelArg");
+}
+
 static void clReleaseKernel_checked(prl_scop_instance scopinst, cl_kernel kernel) {
     assert(kernel);
 
@@ -1289,6 +1307,99 @@ static prl_mem prl_mem_create_empty(size_t size, const char *name, prl_scop_inst
 
     return result;
 }
+
+
+static void prl_mem_init_rwbuf(prl_scop_instance scopinst, prl_mem mem,
+			       void *host_mem, bool host_owning,  bool host_exposed , bool host_readable, bool host_writable,
+			       cl_mem dev_mem,  bool dev_owning, bool dev_readable,  bool dev_exposed, bool dev_writable,
+			       enum prl_alloc_current_location loc) {
+	assert(mem);
+	assert(host_mem);
+	assert(dev_mem);
+	assert(loc == loc_host || loc == loc_dev || loc == loc_none);
+
+	mem->type = alloc_type_rwbuf;
+
+	// host side
+	mem->host_mem = host_mem;
+	mem->host_owning = host_owning;
+	mem->host_exposed = host_exposed;
+	mem->host_readable = host_readable;
+	mem->host_writable = host_writable;
+
+	// dev side
+	mem->clmem = dev_mem;
+	mem->dev_owning = dev_owning;
+	mem->dev_exposed = dev_exposed;
+	mem->dev_readable = dev_readable;
+	mem->dev_writable = dev_writable;
+
+	mem->loc = loc;
+	mem->transfer_to_device = true;
+	mem->transfer_to_host = true;
+
+	assert(is_valid_loc(mem));
+}
+
+static void prl_mem_init_rwbuf_host(prl_scop_instance scopinst, prl_mem mem,
+			       void *host_mem, bool host_owning, bool host_exposed, bool host_readable, bool host_writable,
+			       bool dev_readable, bool dev_writable,
+			       enum prl_alloc_current_location loc){
+	assert(mem);
+	assert(host_mem);
+	assert(loc == loc_host || loc == loc_none);
+
+	mem->type = alloc_type_rwbuf;
+	mem->loc = loc;
+	mem->transfer_to_device = true;
+	mem->transfer_to_host = true;
+
+	// host side
+	mem->host_mem = host_mem;
+	mem->host_owning = host_owning;
+	mem->host_exposed = host_exposed;
+	mem->host_readable = host_readable;
+	mem->host_writable = host_writable;
+
+	// dev side
+	mem->clmem = NULL;
+	mem->dev_owning = false;
+	mem->dev_exposed = false;
+	mem->dev_readable = dev_readable;
+	mem->dev_writable = dev_writable;
+
+	assert(is_valid_loc(mem));
+}
+
+
+static void prl_mem_init_rwbuf_none(prl_scop_instance scopinst, prl_mem mem,
+			       bool host_readable, bool host_writable,
+			       bool dev_readable, bool dev_writable){
+	assert(mem);
+
+	mem->type = alloc_type_rwbuf;
+	mem->loc = loc_none;
+	mem->transfer_to_device = true;
+	mem->transfer_to_host = true;
+
+	// host side
+	mem->host_mem = NULL;
+	mem->host_owning = false;
+	mem->host_exposed = false;
+	mem->host_readable = host_readable;
+	mem->host_writable = host_writable;
+
+	// dev side
+	mem->clmem = NULL;
+	mem->dev_owning = false;
+	mem->dev_exposed = false;
+	mem->dev_readable = dev_readable;
+	mem->dev_writable = dev_writable;
+
+	assert(is_valid_loc(mem));
+}
+
+
 
 static void prl_mem_alloc_host_only(prl_scop_instance scopinst, prl_mem mem) {
     assert(mem);
@@ -1681,7 +1792,7 @@ static void mem_free(prl_scop_instance scopinst, prl_mem mem) {
     free_checked(scopinst, mem);
 }
 
-static void prl_release() {
+void prl_release() {
     if (!prl_initialized)
         return;
 
@@ -1792,7 +1903,7 @@ static void dump_device() {
     free_checked(NOSCOPINST, driver_version);
 }
 
-static void prl_init() {
+void prl_init() {
     if (prl_initialized)
         return;
 
@@ -2291,52 +2402,96 @@ void prl_scop_init_kernel(prl_scop_instance scop, prl_kernel *kernelref, prl_pro
     assert(kernel->kernel);
 }
 
+static bool is_mem_registered(prl_scop_instance scopinst, prl_mem gmem) {
+	assert(gmem);
+
+	for (int i = 0; i < scopinst->mems_size; i+=1) {
+			if (scopinst->mems[i] == gmem)
+				return true;
+		}
+		return false;
+}
+
 prl_mem prl_scop_get_mem(prl_scop_instance scopinst, void *host_mem, size_t size, const char *name) {
     assert(scopinst);
-    assert(host_mem); //TODO: Handle case host_mem==NULL
     assert(size > 0);
 
-    prl_mem gmem = prl_mem_lookup_global_ptr(host_mem, size);
-    if (gmem) {
-        if (!gmem->name && name)
-            gmem->name = strdup(name);
-        push_back_mem(scopinst, gmem);
-        assert(is_valid_loc(gmem));
-        return gmem;
+    if (host_mem) {
+	prl_mem gmem = prl_mem_lookup_global_ptr(host_mem, size);
+	if (gmem) {
+		if (!gmem->name && name) {
+			gmem->name = strdup(name);
+		}
+		if (!is_mem_registered(scopinst, gmem))
+			push_back_mem(scopinst, gmem);
+		assert(is_valid_loc(gmem));
+		return gmem;
+	}
     }
 
     // If it is not a user-allocated memory location, create a temporary local one
     prl_mem lmem = prl_mem_create_empty(size, name, scopinst);
-    lmem->type = alloc_type_host_only;
-    lmem->clmem = NULL;
-    lmem->host_mem = host_mem;
-    lmem->host_owning = false;
-    lmem->host_readable = true;
-    lmem->host_writable = true;
-    lmem->host_exposed = true;
-    lmem->loc = loc_host;
+    if (host_mem) {
+	     prl_mem_init_rwbuf_host(scopinst, lmem,
+		       host_mem, false, true, true, true,
+		       true, true, loc_host);
+    } else {
+	    // No host memory available
+	         prl_mem_init_rwbuf_none(scopinst, lmem,
+		       true, true,
+		       true, true);
+    }
 
-    //prl_mem_manage_host_map(lmem, host_mem, false, true, true, true, true);
-    assert(is_valid_loc(lmem));
     return lmem;
+
 }
 
 static void ensure_dev_allocated(prl_scop_instance scopinst, prl_mem mem) {
-    if (mem->type == alloc_type_host_only) {
-        assert(!mem->clmem);
-        mem->clmem = clCreateBuffer_checked(scopinst, global_state.context, CL_MEM_READ_WRITE /*| CL_MEM_COPY_HOST_PTR*/, mem->size, NULL /*mem->host_mem*/);
-        mem->dev_owning = true;
-        mem->dev_readable = true;
-        mem->dev_writable = true;
-        mem->dev_exposed = false;
-        mem->type = alloc_type_rwbuf;
-    }
+	assert(mem);
+
+	if (mem->clmem)
+		return;
+
+	switch(mem->type) {
+		case alloc_type_rwbuf:
+			mem->clmem = clCreateBuffer_checked(scopinst, global_state.context, CL_MEM_READ_WRITE /*| CL_MEM_COPY_HOST_PTR*/, mem->size, NULL /*mem->host_mem*/);
+			  mem->dev_owning = true;
+			  mem->dev_exposed = false;
+			break;
+		default:
+			assert(!"No device allocation for this type");
+	}
 
     assert(mem->clmem);
 }
 
+static void ensure_host_allocated(prl_scop_instance scopinst, prl_mem mem) {
+	assert(mem);
+
+	if (mem->host_mem)
+		return;
+
+	switch(mem->type) {
+		case alloc_type_rwbuf:
+			mem->host_mem = malloc_checked(scopinst, mem->size);
+			mem->host_owning  = true;
+			mem->host_exposed = false;
+			break;
+		default:
+			assert(!"No host allocation for this type");
+	}
+
+	assert(mem->host_mem);
+}
+
+static void *get_exposed_host(prl_scop_instance scopinst, prl_mem mem) {
+	ensure_host_allocated(scopinst, mem);
+	mem->host_exposed = true;
+	return mem->host_mem;
+}
+
 // Change location of buffer without necessarily preserving its contents; if content preservation is required, prl_scop_host_to_device must have been called first
-static void ensure_on_device(prl_scop_instance scopinst, prl_mem mem) {
+static void ensure_to_device(prl_scop_instance scopinst, prl_mem mem) {
     assert(scopinst);
     assert(mem);
 
@@ -2532,18 +2687,18 @@ void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims,
 
     for (int i = 0; i < n_args; i += 1) {
         struct prl_kernel_call_arg *arg = &args[i];
-        cl_int err = -1;
+
         switch (arg->type) {
         case prl_kernel_call_arg_value:
-            err = clSetKernelArg(kernel->kernel, i, arg->size, arg->data);
+            clSetKernelArg_checked (scopinst, kernel->kernel, i, arg->size, arg->data);
             break;
         case prl_kernel_call_arg_mem: {
             assert(arg->mem);
-            ensure_on_device(scopinst, arg->mem);
-            err = clSetKernelArg(kernel->kernel, i, sizeof(cl_mem), &arg->mem->clmem);
+            ensure_to_device(scopinst, arg->mem);
+           clSetKernelArg_checked(scopinst, kernel->kernel, i, sizeof(cl_mem), &arg->mem->clmem);
         } break;
         }
-        assert(err >= 0);
+
     }
 
     int dims = (grid_dims < block_dims) ? grid_dims : block_dims;
@@ -2639,12 +2794,8 @@ void *prl_alloc(size_t size) {
     prl_init(); // TODO: Lazy initialization at first scop enter? Requires global_state.global_mems to become separate and device memory to be allocated lazily
 
     prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-    prl_mem_alloc_host_only(NOSCOPINST, mem);
-
-    assert(mem->host_mem);
-    mem->host_exposed = true;
-    assert(is_valid_loc(mem));
-    return mem->host_mem;
+    prl_mem_init_rwbuf_none(NOSCOPINST, mem, true, true, true, true);
+    return get_exposed_host(NOSCOPINST, mem);
 }
 
 void prl_free(void *ptr) {

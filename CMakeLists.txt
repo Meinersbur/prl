@@ -24,7 +24,7 @@ find_package(OpenCL REQUIRED)
 
 add_subdirectory(src)
 
-add_executable(correlation_ocl correlation.ppcg_opencl.c)
-target_link_libraries(correlation_ocl prl_opencl)
+#add_executable(correlation_ocl correlation.ppcg_opencl.c)
+#target_link_libraries(correlation_ocl prl_opencl)
 
 

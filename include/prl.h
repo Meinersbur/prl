@@ -6,23 +6,23 @@
 #include "prl_perf.h"
 #include "prl_opencl.h"
 
-//TODO: Remove __ppcg_*
-static inline int __ppcg_floord(int n, unsigned int d) {
-    if (n < 0)
-        return -(((unsigned int)(-n) + d - 1) / d);
-    return (unsigned int)n / d;
-}
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
-static inline int __ppcg_min(int lhs, int rhs) {
-    if (lhs <= rhs)
-        return lhs;
-    return rhs;
-}
+/// Initialize explicitly now
+/// Do nothing if already initialized
+/// Calling it is optional; without it, initialization happens on first time use
+void prl_init();
 
-static inline int __ppcg_max(int lhs, int rhs) {
-    if (lhs >= rhs)
-        return lhs;
-    return rhs;
+/// Release all resources
+/// Calling it is optional; without it, resources are freed on program exit
+/// TODO: Option to only release resources on program exist when an option is set to satisfy leak detector tools
+/// PRL will initialize again if it is used again or prl_init is called
+void prl_release();
+
+#if defined(__cplusplus)
 }
+#endif
 
 #endif /* PRL_H */

@@ -1,17 +1,7 @@
 #ifndef PRL_MEM_H
 #define PRL_MEM_H
 
-#if 0
-//TODO: Avoid including this
-#if defined(__APPLE__)
-#include <OpenCL/opencl.h>
-#else
-#include <CL/opencl.h>
-#endif
-#else
-struct _cl_mem;
-typedef struct _cl_mem *cl_mem;
-#endif
+#include <stddef.h>
 
 #if defined(__cplusplus)
 extern "C" {
