@@ -36,10 +36,24 @@ typedef int64_t prl_time_t; // Enough for 292 years in nanosecond resolution
 enum prl_device_choice {
     PRL_TARGET_DEVICE_FIRST,
     PRL_TARGET_DEVICE_FIXED,
-    PRL_TARGET_DEVICE_GPU_ONLY,
+
     PRL_TARGET_DEVICE_CPU_ONLY,
-    PRL_TARGET_DEVICE_GPU_THEN_CPU,
     PRL_TARGET_DEVICE_CPU_THEN_GPU,
+    PRL_TARGET_DEVICE_CPU_THEN_ACC,
+    PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC,
+    PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU,
+
+    PRL_TARGET_DEVICE_GPU_ONLY,
+    PRL_TARGET_DEVICE_GPU_THEN_CPU,
+    PRL_TARGET_DEVICE_GPU_THEN_ACC,
+    PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC,
+    PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU,
+
+    PRL_TARGET_DEVICE_ACC_ONLY,
+    PRL_TARGET_DEVICE_ACC_THEN_CPU,
+    PRL_TARGET_DEVICE_ACC_THEN_GPU,
+    PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU,
+    PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU,
 };
 
 struct prl_global_config {
@@ -1575,30 +1589,81 @@ static prl_mem prl_mem_lookup_global_ptr(void *host_ptr, size_t size) {
 }
 
 static cl_device_type devtypes[] = {
-    [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
-    [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_ALL,
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] CL_DEVICE_TYPE_ALL};
+	[PRL_TARGET_DEVICE_FIRST] CL_DEVICE_TYPE_DEFAULT,
+	[PRL_TARGET_DEVICE_FIXED]  CL_DEVICE_TYPE_ALL,
 
+    [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
+    [PRL_TARGET_DEVICE_ACC_ONLY] CL_DEVICE_TYPE_ACCELERATOR,
+
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
+
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+};
+
+// { cpu, gpu, acc, other }
+// 0 means never take
+static unsigned char devtypes_rank[][4] = {
+   [ PRL_TARGET_DEVICE_CPU_ONLY] ={ 4, 0,0,0 },
+   [ PRL_TARGET_DEVICE_CPU_THEN_GPU] { 4, 3, 0,0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] { 4, 0, 3, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] { 4, 3, 2, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] { 4, 2, 3, 0 },
+
+    [PRL_TARGET_DEVICE_GPU_ONLY]  { 0, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU]  { 3, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC]  { 0, 4, 3, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC]  { 3, 4, 2, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU]  { 2, 4, 3, 0 },
+
+    [PRL_TARGET_DEVICE_ACC_ONLY]  { 0, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU]  { 3, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU]  { 0, 3, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU]  { 3, 2, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU]  { 2, 3, 4, 0 },
+};
+
+
+#if 0
 static cl_device_type preftypes[] = {
     [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
     [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
     [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU,
     [PRL_TARGET_DEVICE_GPU_THEN_CPU] CL_DEVICE_TYPE_GPU};
+#endif
+
+static int extract_devtype(cl_device_type type) {
+	if (type & CL_DEVICE_TYPE_CPU)
+		return 0;
+		if (type & CL_DEVICE_TYPE_GPU)
+		return 1;
+		if (type & CL_DEVICE_TYPE_ACCELERATOR)
+		return 2;
+return 3;
+}
 
 static int is_preferable_device(cl_device_type old_type, cl_device_type alt_type) {
     assert(alt_type);
     if (!old_type)
         return 1;
 
-    cl_device_type preferred_type = preftypes[global_config.device_choice];
-    if (!(old_type & preferred_type) && (alt_type & preferred_type))
-        return 1;
+    int old_devtype = extract_devtype(old_type);
+    int alt_devtype = extract_devtype(alt_type);
 
-    if (!(alt_type & preferred_type) && (old_type & preferred_type))
-        return -1;
+    int old_rank = devtypes_rank[global_config.device_choice][old_devtype];
+    int alt_rank = devtypes_rank[global_config.device_choice][alt_devtype];
 
-    return 0;
+    return (alt_rank > old_rank) - (old_rank-alt_rank);
 }
 
 static bool get_bool(const char *str) {
@@ -1625,24 +1690,53 @@ static int get_int(const char *str) {
     return res;
 }
 
+static const char *targetconfstr[] = {
+	[PRL_TARGET_DEVICE_FIRST] "first",
+
+    [PRL_TARGET_DEVICE_GPU_ONLY] "gpu",
+    [PRL_TARGET_DEVICE_CPU_ONLY] "cpu",
+    [PRL_TARGET_DEVICE_ACC_ONLY] "acc",
+
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] "gpu_cpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] "cpu_gpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] "acc_cpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] "acc_gpu",
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] "gpu_acc",
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] "cpu_acc",
+
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] "cpu_gpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] "gpu_cpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] "gpu_acc_cpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] "cpu_acc_gpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] "acc_gpu_cpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] "acc_cpu_gpu",
+};
+
+#define LENGTHOF(ARR) (sizeof(ARR)/sizeof(ARR[0]))
+
+static size_t parse_targetconf(const char *targetdev) {
+	for (size_t i = 0; i < LENGTHOF(targetconfstr); i+=1) {
+	const char *confstr = targetconfstr[i];
+	if (!confstr)
+		continue;
+
+	if (strcasecmp(targetdev, confstr)==0)
+		return i;
+	}
+	return LENGTHOF(targetconfstr);
+}
+
 static void env_config(struct prl_global_config *config) {
     assert(config);
     const char *targetdev, *blocking, *profiling_str, *cpu_profiling_str, *gpu_profiling_str, *prefix, *str;
 
     if ((targetdev = getenv(PRL_TARGET_DEVICE))) {
-        //untested
         int env_platform, env_device;
-        if (!strcmp(targetdev, "first"))
-            config->device_choice = PRL_TARGET_DEVICE_FIRST;
-        else if (!strcmp(targetdev, "cpu"))
-            config->device_choice = PRL_TARGET_DEVICE_CPU_ONLY;
-        else if (!strcmp(targetdev, "cpu_gpu"))
-            config->device_choice = PRL_TARGET_DEVICE_CPU_THEN_GPU;
-        else if (!strcmp(targetdev, "gpu"))
-            config->device_choice = PRL_TARGET_DEVICE_GPU_ONLY;
-        else if (!strcmp(targetdev, "gpu_cpu"))
-            config->device_choice = PRL_TARGET_DEVICE_GPU_THEN_CPU;
-        else if (sscanf(targetdev, "%d:%d", &env_platform, &env_device) == 2) {
+
+	size_t preset = parse_targetconf(targetdev);
+	if (preset < LENGTHOF(targetconfstr)) {
+		config->device_choice = preset;
+	} else if (sscanf(targetdev, "%d:%d", &env_platform, &env_device) == 2) {
             // reasonable limits
             assert(0 <= env_platform && env_platform <= 255);
             assert(0 <= env_device && env_device <= 255);
@@ -1996,10 +2090,24 @@ void prl_init() {
         best_device = devices[effective_device];
         free_checked(NOSCOPINST, devices);
     } break;
-    case PRL_TARGET_DEVICE_CPU_ONLY:
-    case PRL_TARGET_DEVICE_CPU_THEN_GPU:
-    case PRL_TARGET_DEVICE_GPU_ONLY:
-    case PRL_TARGET_DEVICE_GPU_THEN_CPU: {
+    case  PRL_TARGET_DEVICE_CPU_ONLY:
+    case   PRL_TARGET_DEVICE_CPU_THEN_GPU:
+    case   PRL_TARGET_DEVICE_CPU_THEN_ACC:
+    case  PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC:
+    case  PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU:
+
+    case   PRL_TARGET_DEVICE_GPU_ONLY:
+    case   PRL_TARGET_DEVICE_GPU_THEN_CPU:
+    case   PRL_TARGET_DEVICE_GPU_THEN_ACC:
+    case  PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC:
+    case   PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU:
+
+    case  PRL_TARGET_DEVICE_ACC_ONLY:
+    case   PRL_TARGET_DEVICE_ACC_THEN_CPU:
+    case   PRL_TARGET_DEVICE_ACC_THEN_GPU:
+    case    PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU:
+    case   PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU:
+    {
         cl_device_type best_type = 0;
 
         cl_uint num_platforms = 0;
@@ -2019,6 +2127,9 @@ void prl_init() {
             for (int j = 0; j < num_devices; j += 1) {
                 cl_device_type devtype;
                 clGetDeviceInfo_checked(NOSCOPINST, devices[j], CL_DEVICE_TYPE, sizeof devtype, &devtype, NULL);
+
+		if (devtypes_rank[effective_device_choice][extract_devtype(devtype)] <= 0)
+			continue;
 
                 if (!best_device || is_preferable_device(best_type, devtype)) {
                     best_platform = platforms[i];
