@@ -1,6 +1,19 @@
 Paris/PPCG/Polyhedral/PRL Runtime Library (PRL)
 ===============================================
 
+Compiling
+----------
+./autogen.sh
+./configure
+make
+
+The user needs to provide the path to the OpenCL header files
+and the path to the OpenCL library.  This can be done for example
+by adding CFLAGS="-I<PATH_TO_OPENCL_HEADERS>  -L<PATH_TO_OPENCL_LIB>"
+when calling configure.  For example:
+
+./configure CFLAGS="-I/opt/AMDAPP/include/ -L/opt/AMDAPP/lib/x86_64/"
+
 Usage
 -----
 
