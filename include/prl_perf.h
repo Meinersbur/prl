@@ -6,8 +6,8 @@ extern "C" {
 #endif
 
 void prl_prof_reset();
-void prl_prof_begin();
-void prl_prof_end();
+void prl_prof_start();
+void prl_prof_stop();
 void prl_prof_dump();
 
 typedef void (*timing_callback)(void *user);
