@@ -43,8 +43,8 @@ prl_scop_instance prl_scop_enter(prl_scop *scop); // fixed
 void prl_scop_leave(prl_scop_instance scop);      // fixed
 
 //TODO: rename prl_scop_opencl_*
-void prl_scop_program_from_file(prl_scop_instance scop, prl_program *program, const char *filename); //TODO: Independent of SCOPinstance
-void prl_scop_program_from_str(prl_scop_instance scop, prl_program *program, const char *str, size_t str_size);
+void prl_scop_program_from_file(prl_scop_instance scop, prl_program *program, const char *filename, const char *build_options); //TODO: Independent of SCOPinstance
+void prl_scop_program_from_str(prl_scop_instance scop, prl_program *program, const char *str, size_t str_size, const char *build_options);
 void prl_scop_init_kernel(prl_scop_instance scop, prl_kernel *kernel, prl_program program, const char *kernelname);
 
 #if __STDC__ >= 199901L

@@ -2459,7 +2459,7 @@ void prl_scop_leave(prl_scop_instance scopinst) {
     add_time(NOSCOPINST, stat_cpu_scop, scop_stop - scop_start);
 }
 
-void prl_scop_program_from_file(prl_scop_instance scopinst, prl_program *programref, const char *filename) {
+void prl_scop_program_from_file(prl_scop_instance scopinst, prl_program *programref, const char *filename, const char *compiler_options) {
     assert(scopinst);
     assert(programref);
     assert(filename);
@@ -2480,7 +2480,7 @@ void prl_scop_program_from_file(prl_scop_instance scopinst, prl_program *program
     fclose(file);
 
     str[size] = '\0';
-    prl_scop_program_from_str(scopinst, programref, str, size + 1);
+    prl_scop_program_from_str(scopinst, programref, str, size + 1, compiler_options);
     free_checked(scopinst, str);
 
     prl_program program = *programref;
@@ -2498,7 +2498,7 @@ static cl_program clCreateProgramWithSource_checked_impl(cl_context context, cl_
 }
 
 // str_size including NULL character
-void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programref, const char *str, size_t str_size) {
+void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programref, const char *str, size_t str_size, const char *build_options) {
     assert(scopinst);
     assert(programref);
     assert(str);
@@ -2512,7 +2512,7 @@ void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programr
             str_size -= 1;
         cl_program clprogram = clCreateProgramWithSource_checked(global_state.context, 1, &str, &str_size);
 
-        cl_int err = clBuildProgram(clprogram, 0, NULL, NULL, NULL, NULL);
+        cl_int err = clBuildProgram(clprogram, 0, NULL, build_options, NULL, NULL);
         if (err < 0) { //TODO: Unified error handling
             fprintf(stderr, "Error during program build\n");
             size_t msgs_size;
