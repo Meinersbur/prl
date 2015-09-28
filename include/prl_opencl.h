@@ -25,8 +25,8 @@ extern "C" {
 
 cl_context prl_opencl_get_context();
 
-prl_mem prl_opencl_mem_manage_dev(size_t size, cl_mem dev_ptr, enum prl_mem_flags flags);
-prl_mem prl_opencl_mem_manage(size_t size, void *host_ptr, cl_mem dev_ptr, enum prl_mem_flags flags);
+prl_mem prl_opencl_mem_manage_dev(cl_mem dev_ptr, enum prl_mem_flags flags);
+prl_mem prl_opencl_mem_manage(void *host_ptr, cl_mem dev_ptr, enum prl_mem_flags flags);
 
 cl_mem prl_mem_get_dev_mem(prl_mem mem);
 

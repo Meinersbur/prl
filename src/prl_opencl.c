@@ -122,6 +122,7 @@ enum prl_stat_entry {
     stat_cpu_clSetKernelArg,
     stat_cpu_clReleaseKernel,
     stat_cpu_clGetDeviceInfo,
+    stat_cpu_clGetMemObjectInfo,
 
     // OpenCL profiling
     stat_gpu_total, // Time spent on GPU from start of first task to end of last task
@@ -252,6 +253,7 @@ static const char *statname[] = {
     [stat_cpu_clSetKernelArg] = "clSetKernelArg",
     [stat_cpu_clReleaseKernel] = "clReleaseKernel",
     [stat_cpu_clGetDeviceInfo] = "clGetDeviceInfo",
+    [stat_cpu_clGetMemObjectInfo] = "clGetMemObjectInfo",
 
     [stat_gpu_total] = "total",
     [stat_gpu_working] = "working",
@@ -1031,6 +1033,21 @@ static void clGetDeviceInfo_checked(prl_scop_instance scopinst, cl_device_id dev
 
     if (err != CL_SUCCESS)
         opencl_error(err, "clGetDeviceInfo");
+}
+
+static cl_int clGetMemObjectInfo_checked(prl_scop_instance scopinst, cl_mem memobj,
+                                         cl_mem_info param_name,
+                                         size_t param_value_size,
+                                         void *param_value,
+                                         size_t *param_value_size_ret) {
+    assert(memobj);
+
+    prl_time_t start = timestamp();
+    cl_int err = clGetMemObjectInfo(memobj, param_name, param_value_size, param_value, param_value_size_ret);
+    prl_time_t stop = timestamp();
+    add_time(scopinst, stat_cpu_clGetMemObjectInfo, stop - start);
+    if (err != CL_SUCCESS)
+        opencl_error(err, "clGetMemObjectInfo");
 }
 
 static void *malloc_checked(prl_scop_instance scopinst, size_t size) {
@@ -2648,7 +2665,16 @@ static void *get_exposed_host(prl_scop_instance scopinst, prl_mem mem) {
 }
 
 void *prl_mem_get_host_mem(prl_mem mem) {
-	return get_exposed_host( NOSCOPINST, mem);
+    assert(mem);
+
+    return get_exposed_host( NOSCOPINST, mem);
+}
+
+cl_mem prl_mem_get_dev_mem(prl_mem mem) {
+    assert(mem);
+
+    mem->dev_exposed = true;
+    return mem->clmem;
 }
 
 // Change location of buffer without necessarily preserving its contents; if content preservation is required, prl_scop_host_to_device must have been called first
@@ -2994,21 +3020,32 @@ cl_context prl_opencl_get_context() {
     return global_state.context;
 }
 
-prl_mem prl_opencl_mem_manage_dev(size_t size, cl_mem dev_ptr, enum prl_mem_flags flags) {
-    assert(size > 0);
+static size_t get_clmem_size(cl_mem dev_ptr) {
+    size_t size = -1ll;
+    size_t size_size = 0;
+    clGetMemObjectInfo_checked(NOSCOPINST, dev_ptr, CL_MEM_SIZE, sizeof(size_t), &size, &size_size);
+    assert(size_size == sizeof(size));
+    assert(size != -1ll && size > 0);
+
+    return size;
+}
+
+prl_mem prl_opencl_mem_manage_dev(cl_mem dev_ptr, enum prl_mem_flags flags) {
     assert(dev_ptr);
+
+    size_t size = get_clmem_size(dev_ptr);
 
     prl_mem gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
     prl_mem_init_rwbuf_dev( gmem, true, true, dev_ptr, false, true, true, true,  loc_dev );
-    prl_mem_manage_dev_only(gmem, dev_ptr, flags & prl_mem_dev_take, !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite));
-    gmem->dev_exposed = true;
+    assert(is_valid_loc(gmem));
     return gmem;
 }
 
-prl_mem prl_opencl_mem_manage(size_t size, void *host_ptr, cl_mem dev_ptr, enum prl_mem_flags flags) {
-    assert(size > 0);
+prl_mem prl_opencl_mem_manage(void *host_ptr, cl_mem dev_ptr, enum prl_mem_flags flags) {
     assert(host_ptr);
     assert(dev_ptr);
+
+    size_t size = get_clmem_size(dev_ptr);
 
     prl_mem gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
     gmem->type = alloc_type_rwbuf;
