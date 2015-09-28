@@ -472,7 +472,7 @@ struct prl_mem_struct {
 
     void *host_mem;   //RENAME: host_ptr
     bool host_owning; // Whether to free(host_mem) when releasing this prl_mem
-     bool host_exposed;
+    bool host_exposed;
     bool host_readable;
     bool host_writable;
     //bool host_dirty;
@@ -480,7 +480,7 @@ struct prl_mem_struct {
 
     cl_mem clmem; //RENAME: dev_clmem
     bool dev_owning;
-     bool dev_exposed;
+    bool dev_exposed;
     bool dev_readable;
     bool dev_writable;
     //bool dev_dirty;
@@ -2647,6 +2647,10 @@ static void *get_exposed_host(prl_scop_instance scopinst, prl_mem mem) {
 	return mem->host_mem;
 }
 
+void *prl_mem_get_host_mem(prl_mem mem) {
+	return get_exposed_host( NOSCOPINST, mem);
+}
+
 // Change location of buffer without necessarily preserving its contents; if content preservation is required, prl_scop_host_to_device must have been called first
 static void ensure_to_device(prl_scop_instance scopinst, prl_mem mem) {
     assert(scopinst);
@@ -2951,8 +2955,16 @@ void *prl_alloc(size_t size) {
     prl_init(); // TODO: Lazy initialization at first scop enter? Requires global_state.global_mems to become separate and device memory to be allocated lazily
 
     prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-    prl_mem_init_rwbuf_none( mem, true, true, true, true);
+    prl_mem_init_rwbuf_none(mem, true, true, true, true);
     return get_exposed_host(NOSCOPINST, mem);
+}
+
+prl_mem prl_mem_alloc(size_t size, enum prl_mem_flags flags) {
+	prl_init();
+
+	prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
+	prl_mem_init_rwbuf_none(mem, true, true, true, true);
+	return mem;
 }
 
 void prl_free(void *ptr) {

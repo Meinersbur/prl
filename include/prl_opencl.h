@@ -1,7 +1,7 @@
 #ifndef PRL_OPENCL_H
 #define PRL_OPENCL_H
 
-#include <prl_mem.h>
+#include "prl_mem.h"
 
 #if 0
 //TODO: Avoid including this
@@ -27,6 +27,8 @@ cl_context prl_opencl_get_context();
 
 prl_mem prl_opencl_mem_manage_dev(size_t size, cl_mem dev_ptr, enum prl_mem_flags flags);
 prl_mem prl_opencl_mem_manage(size_t size, void *host_ptr, cl_mem dev_ptr, enum prl_mem_flags flags);
+
+cl_mem prl_mem_get_dev_mem(prl_mem mem);
 
 #if defined(__cplusplus)
 }

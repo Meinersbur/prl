@@ -11,7 +11,7 @@ struct prl_mem_struct;
 typedef struct prl_mem_struct *prl_mem;
 
 enum prl_mem_flags {
-    // defaults, not necessary to state explicitely, but may make code more readable what is meant
+    // defaults, not necessary to state explicitly, but may make code more readable what is meant
     prl_mem_readable_writable = 0,
     prl_mem_readable = 0,
     prl_mem_writable = 0,
@@ -61,8 +61,7 @@ prl_mem prl_mem_alloc_preinit(size_t size, void *data, enum prl_mem_flags flags)
 prl_mem prl_mem_manage_host(size_t size, void *host_ptr, enum prl_mem_flags flags);
 void prl_mem_free(prl_mem mem);
 
-//void *prl_mem_get_host_mem(prl_mem mem);
-//cl_mem prl_mem_get_dev_mem(prl_mem mem);
+void *prl_mem_get_host_mem(prl_mem mem);
 
 #if defined(__cplusplus)
 }
