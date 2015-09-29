@@ -3093,24 +3093,26 @@ prl_mem prl_opencl_mem_manage(void *host_ptr, cl_mem dev_ptr, enum prl_mem_flags
 void __prl_npr_mem_tag(void *host_ptr, enum npr_mem_tags mode) {
     prl_init();
 
-    bool readable = !(mode & PENCIL_NPR_NOREAD);
-    bool writable = !(mode & PENCIL_NPR_NOWRITE);
+    bool enable_read = mode & PENCIL_NPR_MEM_READ;
+    bool enable_write = mode & PENCIL_NPR_MEM_WRITE;
+    bool disable_read = mode & PENCIL_NPR_MEM_NOREAD;
+    bool disable_write = mode & PENCIL_NPR_MEM_NOWRITE;
 
     prl_mem mem = prl_mem_lookup_global_ptr(host_ptr, 0);
     if (mem) {
-        mem->host_readable = readable;
-        mem->host_writable = writable;
+        mem->host_readable = (mem->host_readable && !disable_read) || enable_read;
+        mem->host_writable = (mem->host_writable && !disable_write) || enable_write;
     } else {
         // This is not a PRL-registered memory yet. Register it now so we can remember its configuration
         mem = prl_mem_create_empty(0, NULL, NOSCOPINST);
-        prl_mem_init_rwbuf_host(mem, host_ptr, false, true, readable, writable, true, true, loc_host);
+        prl_mem_init_rwbuf_host(mem, host_ptr, false, true, !disable_read, !disable_write, true, true, loc_host);
         mem->tag = true;
     }
 
-    if (readable || writable) {
+    if (mem->host_readable || mem->host_writable) {
         ensure_host_allocated(NOSCOPINST, mem);
 
-        if (readable) {
+        if (mem->host_readable) {
             if (mem->loc & loc_bit_dev_is_current) {
                 //TODO: Refactor into more general function
                 cl_command_queue queue = clCreateCommandQueue_checked(NOSCOPINST, global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
