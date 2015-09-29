@@ -493,8 +493,7 @@ struct prl_mem_struct {
     // Where the current buffer content resides
     enum prl_alloc_current_location loc;
 
-
-    bool transfer_to_device;     // On entering a SCoP:
+    bool transfer_to_device; // On entering a SCoP:
     bool transfer_to_host;   // On leaving a SCoP:
 
     prl_mem mem_prev, mem_next; // of prl_scop_instance->local_mems OR global_state.global_mems
@@ -994,20 +993,20 @@ static cl_kernel clCreateKernel_checked(prl_scop_instance scopinst, cl_program p
     return result;
 }
 
- static void clSetKernelArg_checked( prl_scop_instance scopinst,	cl_kernel kernel,
-  	cl_uint arg_index,
-  	size_t arg_size,
-  	const void *arg_value) {
-	 assert(kernel);
-	 assert(arg_size > 0);
-	 assert(arg_value);
+static void clSetKernelArg_checked(prl_scop_instance scopinst, cl_kernel kernel,
+                                   cl_uint arg_index,
+                                   size_t arg_size,
+                                   const void *arg_value) {
+    assert(kernel);
+    assert(arg_size > 0);
+    assert(arg_value);
 
-	     prl_time_t start = timestamp();
-	 cl_int err = clSetKernelArg(kernel,arg_index, arg_size, arg_value);
-	     prl_time_t stop = timestamp();
+    prl_time_t start = timestamp();
+    cl_int err = clSetKernelArg(kernel, arg_index, arg_size, arg_value);
+    prl_time_t stop = timestamp();
     add_time(scopinst, stat_cpu_clSetKernelArg, stop - start);
 
-        if (err != CL_SUCCESS)
+    if (err != CL_SUCCESS)
         opencl_error(err, "clSetKernelArg");
 }
 
@@ -1147,12 +1146,12 @@ static void stat_compute_medians(double medians[static const restrict STAT_ENTRI
 }
 
 static bool is_valid_loc(prl_mem mem) {
-	if (mem->loc & loc_bit_host_is_current)
-		if (!mem->host_mem)
-			return false;
-	if (mem->loc & loc_bit_dev_is_current)
-		if (!mem->clmem)
-			return false;
+    if (mem->loc & loc_bit_host_is_current)
+        if (!mem->host_mem)
+            return false;
+    if (mem->loc & loc_bit_dev_is_current)
+        if (!mem->clmem)
+            return false;
 
     switch (mem->type) {
     case alloc_type_none:
@@ -1348,127 +1347,123 @@ static prl_mem prl_mem_create_empty(size_t size, const char *name, prl_scop_inst
     return result;
 }
 
+static void prl_mem_init_rwbuf(prl_mem mem,
+                               void *host_mem, bool host_owning, bool host_exposed, bool host_readable, bool host_writable,
+                               cl_mem dev_mem, bool dev_owning, bool dev_readable, bool dev_exposed, bool dev_writable,
+                               enum prl_alloc_current_location loc) {
+    assert(mem);
+    assert(host_mem);
+    assert(dev_mem);
+    assert(loc == loc_host || loc == loc_dev || loc == loc_none);
 
-static void prl_mem_init_rwbuf( prl_mem mem,
-			       void *host_mem, bool host_owning,  bool host_exposed , bool host_readable, bool host_writable,
-			       cl_mem dev_mem,  bool dev_owning, bool dev_readable,  bool dev_exposed, bool dev_writable,
-			       enum prl_alloc_current_location loc) {
-	assert(mem);
-	assert(host_mem);
-	assert(dev_mem);
-	assert(loc == loc_host || loc == loc_dev || loc == loc_none);
+    mem->type = alloc_type_rwbuf;
+    mem->loc = loc;
+    mem->transfer_to_device = true;
+    mem->transfer_to_host = true;
 
-	mem->type = alloc_type_rwbuf;
-	mem->loc = loc;
-	mem->transfer_to_device = true;
-	mem->transfer_to_host = true;
+    // host side
+    mem->host_mem = host_mem;
+    mem->host_owning = host_owning;
+    mem->host_exposed = host_exposed;
+    mem->host_readable = host_readable;
+    mem->host_writable = host_writable;
 
-	// host side
-	mem->host_mem = host_mem;
-	mem->host_owning = host_owning;
-	mem->host_exposed = host_exposed;
-	mem->host_readable = host_readable;
-	mem->host_writable = host_writable;
+    // dev side
+    mem->clmem = dev_mem;
+    mem->dev_owning = dev_owning;
+    mem->dev_exposed = dev_exposed;
+    mem->dev_readable = dev_readable;
+    mem->dev_writable = dev_writable;
 
-	// dev side
-	mem->clmem = dev_mem;
-	mem->dev_owning = dev_owning;
-	mem->dev_exposed = dev_exposed;
-	mem->dev_readable = dev_readable;
-	mem->dev_writable = dev_writable;
-
-	assert(is_valid_loc(mem));
+    assert(is_valid_loc(mem));
 }
 
-static void prl_mem_init_rwbuf_host( prl_mem mem,
-			       void *host_mem, bool host_owning, bool host_exposed, bool host_readable, bool host_writable,
-			       bool dev_readable, bool dev_writable,
-			       enum prl_alloc_current_location loc){
-	assert(mem);
-	assert(host_mem);
-	assert(loc == loc_host || loc == loc_none);
+static void prl_mem_init_rwbuf_host(prl_mem mem,
+                                    void *host_mem, bool host_owning, bool host_exposed, bool host_readable, bool host_writable,
+                                    bool dev_readable, bool dev_writable,
+                                    enum prl_alloc_current_location loc) {
+    assert(mem);
+    assert(host_mem);
+    assert(loc == loc_host || loc == loc_none);
 
-	mem->type = alloc_type_rwbuf;
-	mem->loc = loc;
-	mem->transfer_to_device = true;
-	mem->transfer_to_host = true;
+    mem->type = alloc_type_rwbuf;
+    mem->loc = loc;
+    mem->transfer_to_device = true;
+    mem->transfer_to_host = true;
 
-	// host side
-	mem->host_mem = host_mem;
-	mem->host_owning = host_owning;
-	mem->host_exposed = host_exposed;
-	mem->host_readable = host_readable;
-	mem->host_writable = host_writable;
+    // host side
+    mem->host_mem = host_mem;
+    mem->host_owning = host_owning;
+    mem->host_exposed = host_exposed;
+    mem->host_readable = host_readable;
+    mem->host_writable = host_writable;
 
-	// dev side
-	mem->clmem = NULL;
-	mem->dev_owning = false;
-	mem->dev_exposed = false;
-	mem->dev_readable = dev_readable;
-	mem->dev_writable = dev_writable;
+    // dev side
+    mem->clmem = NULL;
+    mem->dev_owning = false;
+    mem->dev_exposed = false;
+    mem->dev_readable = dev_readable;
+    mem->dev_writable = dev_writable;
 
-	assert(is_valid_loc(mem));
+    assert(is_valid_loc(mem));
 }
 
+static void prl_mem_init_rwbuf_dev(prl_mem mem,
+                                   bool host_readable, bool host_writable,
+                                   cl_mem dev_mem, bool dev_owning, bool dev_readable, bool dev_exposed, bool dev_writable,
+                                   enum prl_alloc_current_location loc) {
+    assert(mem);
+    assert(dev_mem);
+    assert(loc == loc_dev || loc == loc_none);
 
-static void prl_mem_init_rwbuf_dev( prl_mem mem,
-			       bool host_readable, bool host_writable,
-			       cl_mem dev_mem,  bool dev_owning, bool dev_readable,  bool dev_exposed, bool dev_writable,
-			       enum prl_alloc_current_location loc) {
-	assert(mem);
-	assert(dev_mem);
-	assert(loc == loc_dev || loc == loc_none);
+    mem->type = alloc_type_rwbuf;
+    mem->loc = loc;
+    mem->transfer_to_device = true;
+    mem->transfer_to_host = true;
 
-	mem->type = alloc_type_rwbuf;
-	mem->loc = loc;
-	mem->transfer_to_device = true;
-	mem->transfer_to_host = true;
+    // host side
+    mem->host_mem = NULL;
+    mem->host_owning = false;
+    mem->host_exposed = false;
+    mem->host_readable = host_readable;
+    mem->host_writable = host_writable;
 
-	// host side
-	mem->host_mem = NULL;
-	mem->host_owning = false;
-	mem->host_exposed = false;
-	mem->host_readable = host_readable;
-	mem->host_writable = host_writable;
+    // dev side
+    mem->clmem = dev_mem;
+    mem->dev_owning = dev_owning;
+    mem->dev_exposed = dev_exposed;
+    mem->dev_readable = dev_readable;
+    mem->dev_writable = dev_writable;
 
-	// dev side
-	mem->clmem = dev_mem;
-	mem->dev_owning = dev_owning;
-	mem->dev_exposed = dev_exposed;
-	mem->dev_readable = dev_readable;
-	mem->dev_writable = dev_writable;
-
-	assert(is_valid_loc(mem));
+    assert(is_valid_loc(mem));
 }
 
-static void prl_mem_init_rwbuf_none( prl_mem mem,
-			       bool host_readable, bool host_writable,
-			       bool dev_readable, bool dev_writable){
-	assert(mem);
+static void prl_mem_init_rwbuf_none(prl_mem mem,
+                                    bool host_readable, bool host_writable,
+                                    bool dev_readable, bool dev_writable) {
+    assert(mem);
 
-	mem->type = alloc_type_rwbuf;
-	mem->loc = loc_none;
-	mem->transfer_to_device = true;
-	mem->transfer_to_host = true;
+    mem->type = alloc_type_rwbuf;
+    mem->loc = loc_none;
+    mem->transfer_to_device = true;
+    mem->transfer_to_host = true;
 
-	// host side
-	mem->host_mem = NULL;
-	mem->host_owning = false;
-	mem->host_exposed = false;
-	mem->host_readable = host_readable;
-	mem->host_writable = host_writable;
+    // host side
+    mem->host_mem = NULL;
+    mem->host_owning = false;
+    mem->host_exposed = false;
+    mem->host_readable = host_readable;
+    mem->host_writable = host_writable;
 
-	// dev side
-	mem->clmem = NULL;
-	mem->dev_owning = false;
-	mem->dev_exposed = false;
-	mem->dev_readable = dev_readable;
-	mem->dev_writable = dev_writable;
+    // dev side
+    mem->clmem = NULL;
+    mem->dev_owning = false;
+    mem->dev_exposed = false;
+    mem->dev_readable = dev_readable;
+    mem->dev_writable = dev_writable;
 
-	assert(is_valid_loc(mem));
+    assert(is_valid_loc(mem));
 }
-
-
 
 static void prl_mem_alloc_host_only(prl_scop_instance scopinst, prl_mem mem) {
     assert(mem);
@@ -1592,13 +1587,13 @@ static prl_mem prl_mem_lookup_global_ptr(void *host_ptr, size_t size) {
     while (mem) {
         assert(!mem->scopinst);
 
-	char *mem_begin = mem->host_mem;
+        char *mem_begin = mem->host_mem;
 
-	if (mem->size ==0 && host_ptr == mem_begin)  {
-		return mem;
-	}
+        if (mem->size == 0 && host_ptr == mem_begin) {
+            return mem;
+        }
 
-  char *mem_end = mem_begin + mem->size;
+        char *mem_end = mem_begin + mem->size;
         if (mem_begin <= ptr_begin && ptr_begin < mem_end) {
             assert(mem_begin <= ptr_end && ptr_end <= mem_end);
             return mem;
@@ -1613,8 +1608,8 @@ static prl_mem prl_mem_lookup_global_ptr(void *host_ptr, size_t size) {
 }
 
 static cl_device_type devtypes[] = {
-	[PRL_TARGET_DEVICE_FIRST] CL_DEVICE_TYPE_DEFAULT,
-	[PRL_TARGET_DEVICE_FIXED]  CL_DEVICE_TYPE_ALL,
+    [PRL_TARGET_DEVICE_FIRST] CL_DEVICE_TYPE_DEFAULT,
+    [PRL_TARGET_DEVICE_FIXED] CL_DEVICE_TYPE_ALL,
 
     [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
     [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
@@ -1638,25 +1633,24 @@ static cl_device_type devtypes[] = {
 // { cpu, gpu, acc, other }
 // 0 means never take
 static unsigned char devtypes_rank[][4] = {
-   [ PRL_TARGET_DEVICE_CPU_ONLY] ={ 4, 0,0,0 },
-   [ PRL_TARGET_DEVICE_CPU_THEN_GPU] { 4, 3, 0,0 },
+    [PRL_TARGET_DEVICE_CPU_ONLY] = {4, 0, 0, 0},
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] { 4, 3, 0, 0 },
     [PRL_TARGET_DEVICE_CPU_THEN_ACC] { 4, 0, 3, 0 },
     [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] { 4, 3, 2, 0 },
     [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] { 4, 2, 3, 0 },
 
-    [PRL_TARGET_DEVICE_GPU_ONLY]  { 0, 4, 0, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU]  { 3, 4, 0, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC]  { 0, 4, 3, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC]  { 3, 4, 2, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU]  { 2, 4, 3, 0 },
+    [PRL_TARGET_DEVICE_GPU_ONLY] { 0, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] { 3, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] { 0, 4, 3, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] { 3, 4, 2, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] { 2, 4, 3, 0 },
 
-    [PRL_TARGET_DEVICE_ACC_ONLY]  { 0, 0, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU]  { 3, 0, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU]  { 0, 3, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU]  { 3, 2, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU]  { 2, 3, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_ONLY] { 0, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] { 3, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] { 0, 3, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] { 3, 2, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] { 2, 3, 4, 0 },
 };
-
 
 #if 0
 static cl_device_type preftypes[] = {
@@ -1667,13 +1661,13 @@ static cl_device_type preftypes[] = {
 #endif
 
 static int extract_devtype(cl_device_type type) {
-	if (type & CL_DEVICE_TYPE_CPU)
-		return 0;
-		if (type & CL_DEVICE_TYPE_GPU)
-		return 1;
-		if (type & CL_DEVICE_TYPE_ACCELERATOR)
-		return 2;
-return 3;
+    if (type & CL_DEVICE_TYPE_CPU)
+        return 0;
+    if (type & CL_DEVICE_TYPE_GPU)
+        return 1;
+    if (type & CL_DEVICE_TYPE_ACCELERATOR)
+        return 2;
+    return 3;
 }
 
 static int is_preferable_device(cl_device_type old_type, cl_device_type alt_type) {
@@ -1687,7 +1681,7 @@ static int is_preferable_device(cl_device_type old_type, cl_device_type alt_type
     int old_rank = devtypes_rank[global_config.device_choice][old_devtype];
     int alt_rank = devtypes_rank[global_config.device_choice][alt_devtype];
 
-    return (alt_rank > old_rank) - (old_rank-alt_rank);
+    return (alt_rank > old_rank) - (old_rank - alt_rank);
 }
 
 static bool get_bool(const char *str) {
@@ -1715,7 +1709,7 @@ static int get_int(const char *str) {
 }
 
 static const char *targetconfstr[] = {
-	[PRL_TARGET_DEVICE_FIRST] "first",
+    [PRL_TARGET_DEVICE_FIRST] "first",
 
     [PRL_TARGET_DEVICE_GPU_ONLY] "gpu",
     [PRL_TARGET_DEVICE_CPU_ONLY] "cpu",
@@ -1736,18 +1730,18 @@ static const char *targetconfstr[] = {
     [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] "acc_cpu_gpu",
 };
 
-#define LENGTHOF(ARR) (sizeof(ARR)/sizeof(ARR[0]))
+#define LENGTHOF(ARR) (sizeof(ARR) / sizeof(ARR[0]))
 
 static size_t parse_targetconf(const char *targetdev) {
-	for (size_t i = 0; i < LENGTHOF(targetconfstr); i+=1) {
-	const char *confstr = targetconfstr[i];
-	if (!confstr)
-		continue;
+    for (size_t i = 0; i < LENGTHOF(targetconfstr); i += 1) {
+        const char *confstr = targetconfstr[i];
+        if (!confstr)
+            continue;
 
-	if (strcasecmp(targetdev, confstr)==0)
-		return i;
-	}
-	return LENGTHOF(targetconfstr);
+        if (strcasecmp(targetdev, confstr) == 0)
+            return i;
+    }
+    return LENGTHOF(targetconfstr);
 }
 
 static void env_config(struct prl_global_config *config) {
@@ -1757,10 +1751,10 @@ static void env_config(struct prl_global_config *config) {
     if ((targetdev = getenv(PRL_TARGET_DEVICE))) {
         int env_platform, env_device;
 
-	size_t preset = parse_targetconf(targetdev);
-	if (preset < LENGTHOF(targetconfstr)) {
-		config->device_choice = preset;
-	} else if (sscanf(targetdev, "%d:%d", &env_platform, &env_device) == 2) {
+        size_t preset = parse_targetconf(targetdev);
+        if (preset < LENGTHOF(targetconfstr)) {
+            config->device_choice = preset;
+        } else if (sscanf(targetdev, "%d:%d", &env_platform, &env_device) == 2) {
             // reasonable limits
             assert(0 <= env_platform && env_platform <= 255);
             assert(0 <= env_device && env_device <= 255);
@@ -1992,18 +1986,18 @@ void prl_release() {
     while (gmem) {
         prl_mem nextmem = gmem->mem_next;
 
-	// Non-tag global mems are to be freed by user
-	if (gmem->tag) {
-		mem_free(NOSCOPINST, gmem);
-	} else {
-		unreleasedmem= true;
-	}
+        // Non-tag global mems are to be freed by user
+        if (gmem->tag) {
+            mem_free(NOSCOPINST, gmem);
+        } else {
+            unreleasedmem = true;
+        }
         gmem = nextmem;
     }
 #ifndef NDEBUG
-	if (unreleasedmem) {
-		fputs("\nMemory leak! Some PRL global memory has not been freed using prl_free or prl_mem_free\n", stderr);
-	}
+    if (unreleasedmem) {
+        fputs("\nMemory leak! Some PRL global memory has not been freed using prl_free or prl_mem_free\n", stderr);
+    }
 #endif
 
     if (dumping) {
@@ -2117,24 +2111,23 @@ void prl_init() {
         best_device = devices[effective_device];
         free_checked(NOSCOPINST, devices);
     } break;
-    case  PRL_TARGET_DEVICE_CPU_ONLY:
-    case   PRL_TARGET_DEVICE_CPU_THEN_GPU:
-    case   PRL_TARGET_DEVICE_CPU_THEN_ACC:
-    case  PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC:
-    case  PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU:
+    case PRL_TARGET_DEVICE_CPU_ONLY:
+    case PRL_TARGET_DEVICE_CPU_THEN_GPU:
+    case PRL_TARGET_DEVICE_CPU_THEN_ACC:
+    case PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC:
+    case PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU:
 
-    case   PRL_TARGET_DEVICE_GPU_ONLY:
-    case   PRL_TARGET_DEVICE_GPU_THEN_CPU:
-    case   PRL_TARGET_DEVICE_GPU_THEN_ACC:
-    case  PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC:
-    case   PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU:
+    case PRL_TARGET_DEVICE_GPU_ONLY:
+    case PRL_TARGET_DEVICE_GPU_THEN_CPU:
+    case PRL_TARGET_DEVICE_GPU_THEN_ACC:
+    case PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC:
+    case PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU:
 
-    case  PRL_TARGET_DEVICE_ACC_ONLY:
-    case   PRL_TARGET_DEVICE_ACC_THEN_CPU:
-    case   PRL_TARGET_DEVICE_ACC_THEN_GPU:
-    case    PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU:
-    case   PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU:
-    {
+    case PRL_TARGET_DEVICE_ACC_ONLY:
+    case PRL_TARGET_DEVICE_ACC_THEN_CPU:
+    case PRL_TARGET_DEVICE_ACC_THEN_GPU:
+    case PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU:
+    case PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU: {
         cl_device_type best_type = 0;
 
         cl_uint num_platforms = 0;
@@ -2155,8 +2148,8 @@ void prl_init() {
                 cl_device_type devtype;
                 clGetDeviceInfo_checked(NOSCOPINST, devices[j], CL_DEVICE_TYPE, sizeof devtype, &devtype, NULL);
 
-		if (devtypes_rank[effective_device_choice][extract_devtype(devtype)] <= 0)
-			continue;
+                if (devtypes_rank[effective_device_choice][extract_devtype(devtype)] <= 0)
+                    continue;
 
                 if (!best_device || is_preferable_device(best_type, devtype)) {
                     best_platform = platforms[i];
@@ -2387,22 +2380,22 @@ static void eval_events(prl_scop_instance scopinst) {
 }
 
 static void ensure_host_allocated(prl_scop_instance scopinst, prl_mem mem) {
-	assert(mem);
+    assert(mem);
 
-	if (mem->host_mem)
-		return;
+    if (mem->host_mem)
+        return;
 
-	switch(mem->type) {
-		case alloc_type_rwbuf:
-			mem->host_mem = malloc_checked(scopinst, mem->size);
-			mem->host_owning  = true;
-			mem->host_exposed = false;
-			break;
-		default:
-			assert(!"No host allocation for this type");
-	}
+    switch (mem->type) {
+    case alloc_type_rwbuf:
+        mem->host_mem = malloc_checked(scopinst, mem->size);
+        mem->host_owning = true;
+        mem->host_exposed = false;
+        break;
+    default:
+        assert(!"No host allocation for this type");
+    }
 
-	assert(mem->host_mem);
+    assert(mem->host_mem);
 }
 
 // Change location of buffer without necessarily preserving its contents
@@ -2419,10 +2412,10 @@ static void ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
 
     switch (mem->type) {
     case alloc_type_rwbuf:
-	    if (mem->host_mem)
-		mem->loc = loc_host;
-	    else
-		    mem->loc = loc_none; // There is no host memory to be updated, data is just lost.
+        if (mem->host_mem)
+            mem->loc = loc_host;
+        else
+            mem->loc = loc_none; // There is no host memory to be updated, data is just lost.
         break;
 
     case alloc_type_map: {
@@ -2474,14 +2467,14 @@ void prl_scop_leave(prl_scop_instance scopinst) {
     prl_mem lmem = scopinst->local_mems;
     while (lmem) {
         assert(lmem->scopinst);
-	if (lmem->host_readable || lmem->host_readable)
-		ensure_on_host(scopinst, lmem);
+        if (lmem->host_readable || lmem->host_readable)
+            ensure_on_host(scopinst, lmem);
         lmem = lmem->mem_next;
     }
     for (int i = 0; i < scopinst->mems_size; i += 1) {
         prl_mem gmem = scopinst->mems[i];
-	if (gmem->host_readable || gmem->host_readable)
-		ensure_on_host(scopinst, gmem);
+        if (gmem->host_readable || gmem->host_readable)
+            ensure_on_host(scopinst, gmem);
     }
 
     clFinish_checked(scopinst, scopinst->queue);
@@ -2610,13 +2603,13 @@ void prl_scop_init_kernel(prl_scop_instance scop, prl_kernel *kernelref, prl_pro
 }
 
 static bool is_mem_registered(prl_scop_instance scopinst, prl_mem gmem) {
-	assert(gmem);
+    assert(gmem);
 
-	for (int i = 0; i < scopinst->mems_size; i+=1) {
-			if (scopinst->mems[i] == gmem)
-				return true;
-		}
-		return false;
+    for (int i = 0; i < scopinst->mems_size; i += 1) {
+        if (scopinst->mems[i] == gmem)
+            return true;
+    }
+    return false;
 }
 
 prl_mem prl_scop_get_mem(prl_scop_instance scopinst, void *host_mem, size_t size, const char *name) {
@@ -2624,66 +2617,66 @@ prl_mem prl_scop_get_mem(prl_scop_instance scopinst, void *host_mem, size_t size
     assert(size > 0);
 
     if (host_mem) {
-	prl_mem gmem = prl_mem_lookup_global_ptr(host_mem, size);
-	if (gmem) {
-		if (!gmem->name && name) {
-			gmem->name = strdup(name);
-		} if (gmem->size==0)
-			gmem->size = size;
-		assert(gmem->size==size);
-		if (!is_mem_registered(scopinst, gmem))
-			push_back_mem(scopinst, gmem);
-		assert(is_valid_loc(gmem));
-		return gmem;
-	}
+        prl_mem gmem = prl_mem_lookup_global_ptr(host_mem, size);
+        if (gmem) {
+            if (!gmem->name && name) {
+                gmem->name = strdup(name);
+            }
+            if (gmem->size == 0)
+                gmem->size = size;
+            assert(gmem->size == size);
+            if (!is_mem_registered(scopinst, gmem))
+                push_back_mem(scopinst, gmem);
+            assert(is_valid_loc(gmem));
+            return gmem;
+        }
     }
 
     // If it is not a user-allocated memory location, create a temporary local one
     prl_mem lmem = prl_mem_create_empty(size, name, scopinst);
     if (host_mem) {
-	     prl_mem_init_rwbuf_host( lmem,
-		       host_mem, false, true, true, true,
-		       true, true, loc_host);
+        prl_mem_init_rwbuf_host(lmem,
+                                host_mem, false, true, true, true,
+                                true, true, loc_host);
     } else {
-	    // No host memory available
-	         prl_mem_init_rwbuf_none( lmem,
-		       true, true,
-		       true, true);
+        // No host memory available
+        prl_mem_init_rwbuf_none(lmem,
+                                true, true,
+                                true, true);
     }
 
     return lmem;
-
 }
 
 static void ensure_dev_allocated(prl_scop_instance scopinst, prl_mem mem) {
-	assert(mem);
+    assert(mem);
 
-	if (mem->clmem)
-		return;
+    if (mem->clmem)
+        return;
 
-	switch(mem->type) {
-		case alloc_type_rwbuf:
-			mem->clmem = clCreateBuffer_checked(scopinst, global_state.context, CL_MEM_READ_WRITE /*| CL_MEM_COPY_HOST_PTR*/, mem->size, NULL /*mem->host_mem*/);
-			  mem->dev_owning = true;
-			  mem->dev_exposed = false;
-			break;
-		default:
-			assert(!"No device allocation for this type");
-	}
+    switch (mem->type) {
+    case alloc_type_rwbuf:
+        mem->clmem = clCreateBuffer_checked(scopinst, global_state.context, CL_MEM_READ_WRITE /*| CL_MEM_COPY_HOST_PTR*/, mem->size, NULL /*mem->host_mem*/);
+        mem->dev_owning = true;
+        mem->dev_exposed = false;
+        break;
+    default:
+        assert(!"No device allocation for this type");
+    }
 
     assert(mem->clmem);
 }
 
 static void *get_exposed_host(prl_scop_instance scopinst, prl_mem mem) {
-	ensure_host_allocated(scopinst, mem);
-	mem->host_exposed = true;
-	return mem->host_mem;
+    ensure_host_allocated(scopinst, mem);
+    mem->host_exposed = true;
+    return mem->host_mem;
 }
 
 void *prl_mem_get_host_mem(prl_mem mem) {
     assert(mem);
 
-    return get_exposed_host( NOSCOPINST, mem);
+    return get_exposed_host(NOSCOPINST, mem);
 }
 
 cl_mem prl_mem_get_dev_mem(prl_mem mem) {
@@ -2772,8 +2765,8 @@ void prl_scop_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
     assert(is_valid_loc(mem));
 
     if (!mem->host_writable || !mem->transfer_to_device) {
-	// This mem is configured to not transfer the data
-	return;
+        // This mem is configured to not transfer the data
+        return;
     }
 
     if (is_mem_available_on_dev(mem)) {
@@ -2835,8 +2828,8 @@ void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
     assert(is_valid_loc(mem));
 
     if (!mem->host_readable || !mem->transfer_to_host) {
-	    // This mem is configured to not transfer the data
-	    return;
+        // This mem is configured to not transfer the data
+        return;
     }
 
     if (mem->loc == loc_host || mem->loc == loc_transferring_to_host) {
@@ -2906,10 +2899,9 @@ void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims,
         case prl_kernel_call_arg_mem: {
             assert(arg->mem);
             ensure_to_device(scopinst, arg->mem);
-           clSetKernelArg_checked(scopinst, kernel->kernel, i, sizeof(cl_mem), &arg->mem->clmem);
+            clSetKernelArg_checked(scopinst, kernel->kernel, i, sizeof(cl_mem), &arg->mem->clmem);
         } break;
         }
-
     }
 
     int dims = (grid_dims < block_dims) ? grid_dims : block_dims;
@@ -3010,11 +3002,11 @@ void *prl_alloc(size_t size) {
 }
 
 prl_mem prl_mem_alloc(size_t size, enum prl_mem_flags flags) {
-	prl_init();
+    prl_init();
 
-	prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-	prl_mem_init_rwbuf_none(mem, !(flags & prl_mem_host_noread), !(flags & prl_mem_host_nowrite), !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite));
-	return mem;
+    prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
+    prl_mem_init_rwbuf_none(mem, !(flags & prl_mem_host_noread), !(flags & prl_mem_host_nowrite), !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite));
+    return mem;
 }
 
 void prl_free(void *ptr) {
@@ -3034,11 +3026,11 @@ prl_mem prl_mem_manage_host(size_t size, void *host_ptr, enum prl_mem_flags flag
 
     prl_mem gmem = prl_mem_lookup_global_ptr(host_ptr, size);
     if (gmem) {
-	    // This mem has been tagged before
-	    gmem->tag = false;
-	} else {
-     gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-	}
+        // This mem has been tagged before
+        gmem->tag = false;
+    } else {
+        gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
+    }
     prl_mem_init_rwbuf_host(gmem, host_ptr, false, true, !(flags & prl_mem_host_noread), !(flags & prl_mem_host_nowrite), !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite), loc_host);
     assert(is_valid_loc(gmem));
     return gmem;
@@ -3066,7 +3058,7 @@ prl_mem prl_opencl_mem_manage_dev(cl_mem dev_ptr, enum prl_mem_flags flags) {
     size_t size = get_clmem_size(dev_ptr);
 
     prl_mem gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-    prl_mem_init_rwbuf_dev( gmem, true, true, dev_ptr, false, !(flags & prl_mem_dev_noread), true, !(flags & prl_mem_dev_nowrite),  loc_dev );
+    prl_mem_init_rwbuf_dev(gmem, true, true, dev_ptr, false, !(flags & prl_mem_dev_noread), true, !(flags & prl_mem_dev_nowrite), loc_dev);
     gmem->host_readable = !(flags & prl_mem_host_noread);
     gmem->host_writable = !(flags & prl_mem_host_nowrite);
     assert(is_valid_loc(gmem));
@@ -3099,43 +3091,42 @@ prl_mem prl_opencl_mem_manage(void *host_ptr, cl_mem dev_ptr, enum prl_mem_flags
 }
 
 void __prl_npr_mem_tag(void *host_ptr, enum npr_mem_tags mode) {
-	prl_init();
+    prl_init();
 
-	bool readable = !(mode & PENCIL_NPR_NOREAD);
-	bool writable = !(mode & PENCIL_NPR_NOWRITE);
+    bool readable = !(mode & PENCIL_NPR_NOREAD);
+    bool writable = !(mode & PENCIL_NPR_NOWRITE);
 
-	prl_mem mem = prl_mem_lookup_global_ptr(host_ptr, 0);
-	if (mem) {
-		mem->host_readable = readable;
-		mem->host_writable = writable;
-	} else {
-		// This is not a PRL-registered memory yet. Register it now so we can remember its configuration
-		mem = prl_mem_create_empty(0, NULL, NOSCOPINST);
-		prl_mem_init_rwbuf_host(mem, host_ptr, false, true, readable, writable, true, true, loc_host);
-		mem->tag = true;
-	}
+    prl_mem mem = prl_mem_lookup_global_ptr(host_ptr, 0);
+    if (mem) {
+        mem->host_readable = readable;
+        mem->host_writable = writable;
+    } else {
+        // This is not a PRL-registered memory yet. Register it now so we can remember its configuration
+        mem = prl_mem_create_empty(0, NULL, NOSCOPINST);
+        prl_mem_init_rwbuf_host(mem, host_ptr, false, true, readable, writable, true, true, loc_host);
+        mem->tag = true;
+    }
 
+    if (readable || writable) {
+        ensure_host_allocated(NOSCOPINST, mem);
 
-	if (readable || writable) {
-		ensure_host_allocated(NOSCOPINST, mem);
+        if (readable) {
+            if (mem->loc & loc_bit_dev_is_current) {
+                //TODO: Refactor into more general function
+                cl_command_queue queue = clCreateCommandQueue_checked(NOSCOPINST, global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+                cl_event event;
+                clEnqueueReadBuffer_checked(NOSCOPINST, queue, mem->clmem, CL_BLOCKING_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL);
+                //TODO: push_back_event(NOSCOPINST, event, mem, NULL, false);
+                clFinish_checked(NOSCOPINST, queue);
+                clReleaseCommandQueue_checked(NOSCOPINST, queue);
+            }
+        }
 
-	if (readable) {
-		if (mem->loc & loc_bit_dev_is_current) {
-			//TODO: Refactor into more general function
-			cl_command_queue queue = clCreateCommandQueue_checked(NOSCOPINST,  global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
-			cl_event event;
-		        clEnqueueReadBuffer_checked(NOSCOPINST, queue, mem->clmem, CL_BLOCKING_TRUE, 0, mem->size, mem->host_mem, 0, NULL,  NULL);
-			//TODO: push_back_event(NOSCOPINST, event, mem, NULL, false);
-			clFinish_checked(NOSCOPINST, queue);
-			clReleaseCommandQueue_checked(NOSCOPINST, queue);
-		}
-	}
+        mem->loc = loc_host;
+    }
 
-		mem->loc = loc_host;
-	}
-
-	assert(is_valid_loc(mem));
+    assert(is_valid_loc(mem));
 }
 void __pencil_npr_mem_tag(void *location, enum npr_mem_tags mode) {
-	__prl_npr_mem_tag(location, mode);
+    __prl_npr_mem_tag(location, mode);
 }
