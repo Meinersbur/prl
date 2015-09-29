@@ -13,6 +13,7 @@
 #include <time.h>
 #include <math.h>
 #include <limits.h>
+#include "prl_pencil.h"
 #include "prl.h"
 
 static const char *PRL_TARGET_DEVICE = "PRL_TARGET_DEVICE";
@@ -468,6 +469,7 @@ struct prl_mem_struct {
     prl_scop_instance scopinst; //RENAME: scopinst
                                 //bool is_global;
     size_t size;
+    bool tag; // If this is a tag, it doesn't need to be freed explicitely.
     char *name;
     enum prl_alloc_type type;
     cl_event transferevent;
@@ -1321,12 +1323,12 @@ static void memlist_push_front(prl_mem *first, prl_mem item) {
 //TODO: It is not necessary to know size at creation-time
 static prl_mem prl_mem_create_empty(size_t size, const char *name, prl_scop_instance scopinst) {
     assert(prl_initialized);
-    assert(size > 0);
 
     prl_mem result = malloc_checked(scopinst, sizeof *result);
     memset(result, 0, sizeof *result);
 
     result->size = size;
+    result->tag = false;
     result->name = name ? strdup(name) : NULL;
     result->transfer_to_device = true;
     result->transfer_to_host = true;
@@ -1590,8 +1592,13 @@ static prl_mem prl_mem_lookup_global_ptr(void *host_ptr, size_t size) {
     while (mem) {
         assert(!mem->scopinst);
 
-        char *mem_begin = mem->host_mem;
-        char *mem_end = mem_begin + mem->size;
+	char *mem_begin = mem->host_mem;
+
+	if (mem->size ==0 && host_ptr == mem_begin)  {
+		return mem;
+	}
+
+  char *mem_end = mem_begin + mem->size;
         if (mem_begin <= ptr_begin && ptr_begin < mem_end) {
             assert(mem_begin <= ptr_end && ptr_end <= mem_end);
             return mem;
@@ -1980,21 +1987,24 @@ void prl_release() {
         scop = nextscop;
     }
 
-// Global mems are to be freed by user
-#if 0
-    prl_mem mem = global_state.global_mems;
-    while (mem) {
-        prl_mem nextmem = mem->next;
-	mem_free(NOSCOPINST, mem);
-        mem = nextmem;
+    prl_mem gmem = global_state.global_mems;
+    bool unreleasedmem = false;
+    while (gmem) {
+        prl_mem nextmem = gmem->mem_next;
+
+	// Non-tag global mems are to be freed by user
+	if (gmem->tag) {
+		mem_free(NOSCOPINST, gmem);
+	} else {
+		unreleasedmem= true;
+	}
+        gmem = nextmem;
     }
-#endif
 #ifndef NDEBUG
-	if (global_state.global_mems) {
+	if (unreleasedmem) {
 		fputs("\nMemory leak! Some PRL global memory has not been freed using prl_free or prl_mem_free\n", stderr);
 	}
 #endif
-
 
     if (dumping) {
         if (global_state.config.cpu_profiling) {
@@ -2376,6 +2386,25 @@ static void eval_events(prl_scop_instance scopinst) {
     add_time(scopinst, stat_gpu_transfer_to_host, gpu_transfer_to_host);
 }
 
+static void ensure_host_allocated(prl_scop_instance scopinst, prl_mem mem) {
+	assert(mem);
+
+	if (mem->host_mem)
+		return;
+
+	switch(mem->type) {
+		case alloc_type_rwbuf:
+			mem->host_mem = malloc_checked(scopinst, mem->size);
+			mem->host_owning  = true;
+			mem->host_exposed = false;
+			break;
+		default:
+			assert(!"No host allocation for this type");
+	}
+
+	assert(mem->host_mem);
+}
+
 // Change location of buffer without necessarily preserving its contents
 static void ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
     assert(scopinst);
@@ -2385,6 +2414,8 @@ static void ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
         // Nothing to do
         return;
     }
+
+    ensure_host_allocated(scopinst, mem);
 
     switch (mem->type) {
     case alloc_type_rwbuf:
@@ -2443,12 +2474,14 @@ void prl_scop_leave(prl_scop_instance scopinst) {
     prl_mem lmem = scopinst->local_mems;
     while (lmem) {
         assert(lmem->scopinst);
-        ensure_on_host(scopinst, lmem);
+	if (lmem->host_readable || lmem->host_readable)
+		ensure_on_host(scopinst, lmem);
         lmem = lmem->mem_next;
     }
     for (int i = 0; i < scopinst->mems_size; i += 1) {
         prl_mem gmem = scopinst->mems[i];
-        ensure_on_host(scopinst, gmem);
+	if (gmem->host_readable || gmem->host_readable)
+		ensure_on_host(scopinst, gmem);
     }
 
     clFinish_checked(scopinst, scopinst->queue);
@@ -2595,7 +2628,9 @@ prl_mem prl_scop_get_mem(prl_scop_instance scopinst, void *host_mem, size_t size
 	if (gmem) {
 		if (!gmem->name && name) {
 			gmem->name = strdup(name);
-		}
+		} if (gmem->size==0)
+			gmem->size = size;
+		assert(gmem->size==size);
 		if (!is_mem_registered(scopinst, gmem))
 			push_back_mem(scopinst, gmem);
 		assert(is_valid_loc(gmem));
@@ -2637,25 +2672,6 @@ static void ensure_dev_allocated(prl_scop_instance scopinst, prl_mem mem) {
 	}
 
     assert(mem->clmem);
-}
-
-static void ensure_host_allocated(prl_scop_instance scopinst, prl_mem mem) {
-	assert(mem);
-
-	if (mem->host_mem)
-		return;
-
-	switch(mem->type) {
-		case alloc_type_rwbuf:
-			mem->host_mem = malloc_checked(scopinst, mem->size);
-			mem->host_owning  = true;
-			mem->host_exposed = false;
-			break;
-		default:
-			assert(!"No host allocation for this type");
-	}
-
-	assert(mem->host_mem);
 }
 
 static void *get_exposed_host(prl_scop_instance scopinst, prl_mem mem) {
@@ -2755,6 +2771,11 @@ void prl_scop_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
     assert(mem);
     assert(is_valid_loc(mem));
 
+    if (!mem->host_writable || !mem->transfer_to_device) {
+	// This mem is configured to not transfer the data
+	return;
+    }
+
     if (is_mem_available_on_dev(mem)) {
         // Nothing to do
         return;
@@ -2810,9 +2831,13 @@ void prl_scop_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
 }
 
 void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
-    assert(scopinst);
     assert(mem);
     assert(is_valid_loc(mem));
+
+    if (!mem->host_readable || !mem->transfer_to_host) {
+	    // This mem is configured to not transfer the data
+	    return;
+    }
 
     if (mem->loc == loc_host || mem->loc == loc_transferring_to_host) {
         // Already on host
@@ -2832,7 +2857,6 @@ void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
             mem->transferevent = event;
             push_back_event(scopinst, event, mem, NULL, false);
         }
-
     } break;
     case alloc_type_map: {
         cl_event event = NULL;
@@ -2877,7 +2901,7 @@ void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims,
 
         switch (arg->type) {
         case prl_kernel_call_arg_value:
-            clSetKernelArg_checked (scopinst, kernel->kernel, i, arg->size, arg->data);
+            clSetKernelArg_checked(scopinst, kernel->kernel, i, arg->size, arg->data);
             break;
         case prl_kernel_call_arg_mem: {
             assert(arg->mem);
@@ -2989,7 +3013,7 @@ prl_mem prl_mem_alloc(size_t size, enum prl_mem_flags flags) {
 	prl_init();
 
 	prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-	prl_mem_init_rwbuf_none(mem, true, true, true, true);
+	prl_mem_init_rwbuf_none(mem, !(flags & prl_mem_host_noread), !(flags & prl_mem_host_nowrite), !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite));
 	return mem;
 }
 
@@ -3008,9 +3032,15 @@ prl_mem prl_mem_manage_host(size_t size, void *host_ptr, enum prl_mem_flags flag
     assert(size > 0);
     assert(host_ptr);
 
-    prl_mem gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-    prl_mem_init_rwbuf_host( gmem, host_ptr, false, true, true, true, true, true, loc_host);
-	assert(is_valid_loc(gmem));
+    prl_mem gmem = prl_mem_lookup_global_ptr(host_ptr, size);
+    if (gmem) {
+	    // This mem has been tagged before
+	    gmem->tag = false;
+	} else {
+     gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
+	}
+    prl_mem_init_rwbuf_host(gmem, host_ptr, false, true, !(flags & prl_mem_host_noread), !(flags & prl_mem_host_nowrite), !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite), loc_host);
+    assert(is_valid_loc(gmem));
     return gmem;
 }
 
@@ -3036,7 +3066,9 @@ prl_mem prl_opencl_mem_manage_dev(cl_mem dev_ptr, enum prl_mem_flags flags) {
     size_t size = get_clmem_size(dev_ptr);
 
     prl_mem gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
-    prl_mem_init_rwbuf_dev( gmem, true, true, dev_ptr, false, true, true, true,  loc_dev );
+    prl_mem_init_rwbuf_dev( gmem, true, true, dev_ptr, false, !(flags & prl_mem_dev_noread), true, !(flags & prl_mem_dev_nowrite),  loc_dev );
+    gmem->host_readable = !(flags & prl_mem_host_noread);
+    gmem->host_writable = !(flags & prl_mem_host_nowrite);
     assert(is_valid_loc(gmem));
     return gmem;
 }
@@ -3064,4 +3096,46 @@ prl_mem prl_opencl_mem_manage(void *host_ptr, cl_mem dev_ptr, enum prl_mem_flags
     gmem->dev_owning = flags & prl_mem_dev_take;
 
     return gmem;
+}
+
+void __prl_npr_mem_tag(void *host_ptr, enum npr_mem_tags mode) {
+	prl_init();
+
+	bool readable = !(mode & PENCIL_NPR_NOREAD);
+	bool writable = !(mode & PENCIL_NPR_NOWRITE);
+
+	prl_mem mem = prl_mem_lookup_global_ptr(host_ptr, 0);
+	if (mem) {
+		mem->host_readable = readable;
+		mem->host_writable = writable;
+	} else {
+		// This is not a PRL-registered memory yet. Register it now so we can remember its configuration
+		mem = prl_mem_create_empty(0, NULL, NOSCOPINST);
+		prl_mem_init_rwbuf_host(mem, host_ptr, false, true, readable, writable, true, true, loc_host);
+		mem->tag = true;
+	}
+
+
+	if (readable || writable) {
+		ensure_host_allocated(NOSCOPINST, mem);
+
+	if (readable) {
+		if (mem->loc & loc_bit_dev_is_current) {
+			//TODO: Refactor into more general function
+			cl_command_queue queue = clCreateCommandQueue_checked(NOSCOPINST,  global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+			cl_event event;
+		        clEnqueueReadBuffer_checked(NOSCOPINST, queue, mem->clmem, CL_BLOCKING_TRUE, 0, mem->size, mem->host_mem, 0, NULL,  NULL);
+			//TODO: push_back_event(NOSCOPINST, event, mem, NULL, false);
+			clFinish_checked(NOSCOPINST, queue);
+			clReleaseCommandQueue_checked(NOSCOPINST, queue);
+		}
+	}
+
+		mem->loc = loc_host;
+	}
+
+	assert(is_valid_loc(mem));
+}
+void __pencil_npr_mem_tag(void *location, enum npr_mem_tags mode) {
+	__prl_npr_mem_tag(location, mode);
 }
