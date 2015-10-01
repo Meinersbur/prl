@@ -528,130 +528,250 @@ static const char *opencl_getErrorString(cl_int error) {
     // runtime
     case CL_SUCCESS:
         return "CL_SUCCESS";
+#ifdef CL_DEVICE_NOT_FOUND
     case CL_DEVICE_NOT_FOUND:
         return "CL_DEVICE_NOT_FOUND";
+#endif
+#ifdef CL_DEVICE_NOT_AVAILABLE
     case CL_DEVICE_NOT_AVAILABLE:
         return "CL_DEVICE_NOT_AVAILABLE";
+#endif
+#ifdef CL_COMPILER_NOT_AVAILABLE
     case CL_COMPILER_NOT_AVAILABLE:
         return "CL_COMPILER_NOT_AVAILABLE";
+#endif
+#ifdef CL_MEM_OBJECT_ALLOCATION_FAILURE
     case CL_MEM_OBJECT_ALLOCATION_FAILURE:
         return "CL_MEM_OBJECT_ALLOCATION_FAILURE";
+#endif
+#ifdef CL_OUT_OF_RESOURCES
     case CL_OUT_OF_RESOURCES:
         return "CL_OUT_OF_RESOURCES";
+#endif
+#ifdef CL_OUT_OF_HOST_MEMORY
     case CL_OUT_OF_HOST_MEMORY:
         return "CL_OUT_OF_HOST_MEMORY";
+#endif
+#ifdef CL_PROFILING_INFO_NOT_AVAILABLE
     case CL_PROFILING_INFO_NOT_AVAILABLE:
         return "CL_PROFILING_INFO_NOT_AVAILABLE";
+#endif
+#ifdef CL_MEM_COPY_OVERLAP
     case CL_MEM_COPY_OVERLAP:
         return "CL_MEM_COPY_OVERLAP";
+#endif
+#ifdef CL_IMAGE_FORMAT_MISMATCH
     case CL_IMAGE_FORMAT_MISMATCH:
         return "CL_IMAGE_FORMAT_MISMATCH";
+#endif
+#ifdef CL_IMAGE_FORMAT_NOT_SUPPORTED
     case CL_IMAGE_FORMAT_NOT_SUPPORTED:
         return "CL_IMAGE_FORMAT_NOT_SUPPORTED";
+#endif
+#ifdef CL_BUILD_PROGRAM_FAILURE
     case CL_BUILD_PROGRAM_FAILURE:
         return "CL_BUILD_PROGRAM_FAILURE";
+#endif
+#ifdef CL_MAP_FAILURE
     case CL_MAP_FAILURE:
         return "CL_MAP_FAILURE";
+#endif
+#ifdef CL_MISALIGNED_SUB_BUFFER_OFFSET
     case CL_MISALIGNED_SUB_BUFFER_OFFSET:
         return "CL_MISALIGNED_SUB_BUFFER_OFFSET";
+#endif
+#ifdef CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST
     case CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST:
         return "CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST";
+#endif
+#ifdef CL_COMPILE_PROGRAM_FAILURE
     case CL_COMPILE_PROGRAM_FAILURE:
         return "CL_COMPILE_PROGRAM_FAILURE";
+#endif
+#ifdef CL_LINKER_NOT_AVAILABLE
     case CL_LINKER_NOT_AVAILABLE:
         return "CL_LINKER_NOT_AVAILABLE";
+#endif
+#ifdef CL_LINK_PROGRAM_FAILURE
     case CL_LINK_PROGRAM_FAILURE:
         return "CL_LINK_PROGRAM_FAILURE";
+#endif
+#ifdef CL_DEVICE_PARTITION_FAILED
     case CL_DEVICE_PARTITION_FAILED:
         return "CL_DEVICE_PARTITION_FAILED";
+#endif
+#ifdef CL_KERNEL_ARG_INFO_NOT_AVAILABLE
     case CL_KERNEL_ARG_INFO_NOT_AVAILABLE:
         return "CL_KERNEL_ARG_INFO_NOT_AVAILABLE";
+#endif
 
-    // compilation
+// compilation
+#ifdef CL_INVALID_VALUE
     case CL_INVALID_VALUE:
         return "CL_INVALID_VALUE";
+#endif
+#ifdef CL_INVALID_DEVICE_TYPE
     case CL_INVALID_DEVICE_TYPE:
         return "CL_INVALID_DEVICE_TYPE";
+#endif
+#ifdef CL_INVALID_PLATFORM
     case CL_INVALID_PLATFORM:
         return "CL_INVALID_PLATFORM";
+#endif
+#ifdef CL_INVALID_DEVICE
     case CL_INVALID_DEVICE:
         return "CL_INVALID_DEVICE";
+#endif
+#ifdef CL_INVALID_CONTEXT
     case CL_INVALID_CONTEXT:
         return "CL_INVALID_CONTEXT";
+#endif
+#ifdef CL_INVALID_QUEUE_PROPERTIES
     case CL_INVALID_QUEUE_PROPERTIES:
         return "CL_INVALID_QUEUE_PROPERTIES";
+#endif
+#ifdef CL_INVALID_COMMAND_QUEUE
     case CL_INVALID_COMMAND_QUEUE:
         return "CL_INVALID_COMMAND_QUEUE";
+#endif
+#ifdef CL_INVALID_HOST_PTR
     case CL_INVALID_HOST_PTR:
         return "CL_INVALID_HOST_PTR";
+#endif
+#ifdef CL_INVALID_MEM_OBJECT
     case CL_INVALID_MEM_OBJECT:
         return "CL_INVALID_MEM_OBJECT";
+#endif
+#ifdef CL_INVALID_IMAGE_FORMAT_DESCRIPTOR
     case CL_INVALID_IMAGE_FORMAT_DESCRIPTOR:
         return "CL_INVALID_IMAGE_FORMAT_DESCRIPTOR";
+#endif
+#ifdef CL_INVALID_IMAGE_SIZE
     case CL_INVALID_IMAGE_SIZE:
         return "CL_INVALID_IMAGE_SIZE";
+#endif
+#ifdef CL_INVALID_SAMPLER
     case CL_INVALID_SAMPLER:
         return "CL_INVALID_SAMPLER";
+#endif
+#ifdef CL_INVALID_BINARY
     case CL_INVALID_BINARY:
         return "CL_INVALID_BINARY";
+#endif
+#ifdef CL_INVALID_BUILD_OPTIONS
     case CL_INVALID_BUILD_OPTIONS:
         return "CL_INVALID_BUILD_OPTIONS";
+#endif
+#ifdef CL_INVALID_PROGRAM
     case CL_INVALID_PROGRAM:
         return "CL_INVALID_PROGRAM";
+#endif
+#ifdef CL_INVALID_PROGRAM_EXECUTABLE
     case CL_INVALID_PROGRAM_EXECUTABLE:
         return "CL_INVALID_PROGRAM_EXECUTABLE";
+#endif
+#ifdef CL_INVALID_KERNEL_NAME
     case CL_INVALID_KERNEL_NAME:
         return "CL_INVALID_KERNEL_NAME";
+#endif
+#ifdef CL_INVALID_KERNEL_DEFINITION
     case CL_INVALID_KERNEL_DEFINITION:
         return "CL_INVALID_KERNEL_DEFINITION";
+#endif
+#ifdef CL_INVALID_KERNEL
     case CL_INVALID_KERNEL:
         return "CL_INVALID_KERNEL";
+#endif
+#ifdef CL_INVALID_ARG_INDEX
     case CL_INVALID_ARG_INDEX:
         return "CL_INVALID_ARG_INDEX";
+#endif
+#ifdef CL_INVALID_ARG_VALUE
     case CL_INVALID_ARG_VALUE:
         return "CL_INVALID_ARG_VALUE";
+#endif
+#ifdef CL_INVALID_ARG_SIZE
     case CL_INVALID_ARG_SIZE:
         return "CL_INVALID_ARG_SIZE";
+#endif
+#ifdef CL_INVALID_KERNEL_ARGS
     case CL_INVALID_KERNEL_ARGS:
         return "CL_INVALID_KERNEL_ARGS";
+#endif
+#ifdef CL_INVALID_WORK_DIMENSION
     case CL_INVALID_WORK_DIMENSION:
         return "CL_INVALID_WORK_DIMENSION";
+#endif
+#ifdef CL_INVALID_WORK_GROUP_SIZE
     case CL_INVALID_WORK_GROUP_SIZE:
         return "CL_INVALID_WORK_GROUP_SIZE";
+#endif
+#ifdef CL_INVALID_WORK_ITEM_SIZE
     case CL_INVALID_WORK_ITEM_SIZE:
         return "CL_INVALID_WORK_ITEM_SIZE";
+#endif
+#ifdef CL_INVALID_GLOBAL_OFFSET
     case CL_INVALID_GLOBAL_OFFSET:
         return "CL_INVALID_GLOBAL_OFFSET";
+#endif
+#ifdef CL_INVALID_EVENT_WAIT_LIST
     case CL_INVALID_EVENT_WAIT_LIST:
         return "CL_INVALID_EVENT_WAIT_LIST";
+#endif
+#ifdef CL_INVALID_EVENT
     case CL_INVALID_EVENT:
         return "CL_INVALID_EVENT";
+#endif
+#ifdef CL_INVALID_OPERATION
     case CL_INVALID_OPERATION:
         return "CL_INVALID_OPERATION";
+#endif
+#ifdef CL_INVALID_GL_OBJECT
     case CL_INVALID_GL_OBJECT:
         return "CL_INVALID_GL_OBJECT";
+#endif
+#ifdef CL_INVALID_BUFFER_SIZE
     case CL_INVALID_BUFFER_SIZE:
         return "CL_INVALID_BUFFER_SIZE";
+#endif
+#ifdef CL_INVALID_MIP_LEVEL
     case CL_INVALID_MIP_LEVEL:
         return "CL_INVALID_MIP_LEVEL";
+#endif
+#ifdef CL_INVALID_GLOBAL_WORK_SIZE
     case CL_INVALID_GLOBAL_WORK_SIZE:
         return "CL_INVALID_GLOBAL_WORK_SIZE";
+#endif
+#ifdef CL_INVALID_PROPERTY
     case CL_INVALID_PROPERTY:
         return "CL_INVALID_PROPERTY";
+#endif
+#ifdef CL_INVALID_IMAGE_DESCRIPTOR
     case CL_INVALID_IMAGE_DESCRIPTOR:
         return "CL_INVALID_IMAGE_DESCRIPTOR";
+#endif
+#ifdef CL_INVALID_COMPILER_OPTIONS
     case CL_INVALID_COMPILER_OPTIONS:
         return "CL_INVALID_COMPILER_OPTIONS";
+#endif
+#ifdef CL_INVALID_LINKER_OPTIONS
     case CL_INVALID_LINKER_OPTIONS:
         return "CL_INVALID_LINKER_OPTIONS";
+#endif
+#ifdef CL_INVALID_DEVICE_PARTITION_COUNT
     case CL_INVALID_DEVICE_PARTITION_COUNT:
         return "CL_INVALID_DEVICE_PARTITION_COUNT";
+#endif
 
-    // extensions
+// extensions
+#ifdef CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR
     case CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR:
         return "CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR";
+#endif
+#ifdef CL_PLATFORM_NOT_FOUND_KHR
     case CL_PLATFORM_NOT_FOUND_KHR:
         return "CL_PLATFORM_NOT_FOUND_KHR";
+#endif
     case CL_INT_MIN:
         return "CL_INT_MIN (err not set)";
     default:
@@ -1522,6 +1642,11 @@ static void prl_mem_manage_dev_only(prl_mem mem, cl_mem dev_mem, bool dev_take_o
 
     mem->loc = loc_dev;
 }
+
+#ifndef CL_MAP_WRITE_INVALIDATE_REGION
+// If not supported in this version of OpenCL
+#define CL_MAP_WRITE_INVALIDATE_REGION 0
+#endif
 
 static void prl_mem_alloc_map(prl_mem mem, bool host_readable, bool host_writable, bool dev_readable, bool dev_writable, prl_scop_instance scopinst) {
     assert(mem);
