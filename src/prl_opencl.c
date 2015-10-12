@@ -212,6 +212,7 @@ static enum prl_stat_entry clcommand_to_stat_entry(cl_int command) {
         return stat_gpu_COPY_BUFFER_RECT;
     case CL_COMMAND_USER:
         return stat_gpu_USER;
+#ifdef CL_VERSION_1_2
     case CL_COMMAND_BARRIER:
         return stat_gpu_BARRIER;
     case CL_COMMAND_MIGRATE_MEM_OBJECTS:
@@ -220,6 +221,7 @@ static enum prl_stat_entry clcommand_to_stat_entry(cl_int command) {
         return stat_gpu_FILL_BUFFER;
     case CL_COMMAND_FILL_IMAGE:
         return stat_gpu_FILL_IMAGE;
+#endif
     default:
         return stat_gpu_other;
     }
@@ -556,6 +558,7 @@ static const char *opencl_getErrorString(cl_int error) {
         return "CL_MISALIGNED_SUB_BUFFER_OFFSET";
     case CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST:
         return "CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST";
+#ifdef CL_VERSION_1_2
     case CL_COMPILE_PROGRAM_FAILURE:
         return "CL_COMPILE_PROGRAM_FAILURE";
     case CL_LINKER_NOT_AVAILABLE:
@@ -566,6 +569,7 @@ static const char *opencl_getErrorString(cl_int error) {
         return "CL_DEVICE_PARTITION_FAILED";
     case CL_KERNEL_ARG_INFO_NOT_AVAILABLE:
         return "CL_KERNEL_ARG_INFO_NOT_AVAILABLE";
+#endif
 
     // compilation
     case CL_INVALID_VALUE:
@@ -638,6 +642,7 @@ static const char *opencl_getErrorString(cl_int error) {
         return "CL_INVALID_GLOBAL_WORK_SIZE";
     case CL_INVALID_PROPERTY:
         return "CL_INVALID_PROPERTY";
+#ifdef CL_VERSION_1_2
     case CL_INVALID_IMAGE_DESCRIPTOR:
         return "CL_INVALID_IMAGE_DESCRIPTOR";
     case CL_INVALID_COMPILER_OPTIONS:
@@ -646,6 +651,7 @@ static const char *opencl_getErrorString(cl_int error) {
         return "CL_INVALID_LINKER_OPTIONS";
     case CL_INVALID_DEVICE_PARTITION_COUNT:
         return "CL_INVALID_DEVICE_PARTITION_COUNT";
+#endif
 
     // extensions
     case CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR:
@@ -1541,8 +1547,11 @@ static void prl_mem_alloc_map(prl_mem mem, bool host_readable, bool host_writabl
         clqueue = scopinst->queue;
     else
         clqueue = clCreateCommandQueue_checked(scopinst, global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
-
+#ifdef CL_VERSION_1_2
     mem->host_mem = clEnqueueMapBuffer_checked(scopinst, clqueue, mem->clmem, CL_BLOCKING_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, mem->size, 0, NULL, NULL);
+#else
+    mem->host_mem = clEnqueueMapBuffer_checked(scopinst, clqueue, mem->clmem, CL_BLOCKING_TRUE, CL_MAP_WRITE, 0, mem->size, 0, NULL, NULL);
+#endif
     clFinish(clqueue);
 
     if (!scopinst)
