@@ -1,3 +1,14 @@
+#ifdef _MSC_VER
+#define _CRT_NONSTDC_NO_DEPRECATE 
+#define _CRT_SECURE_NO_WARNINGS
+  #define strcasecmp _stricmp
+  #define strncasecmp _strnicmp 
+#pragma warning(disable:4244)
+#define C99_STATIC_CONST_RESTRICT(n)
+#else
+#define C99_STATIC_CONST_RESTRICT(n) static const restrict n
+#endif
+
 #if defined(__APPLE__)
 #include <OpenCL/opencl.h>
 #else
@@ -170,56 +181,106 @@ enum prl_stat_entry {
 
 static enum prl_stat_entry clcommand_to_stat_entry(cl_int command) {
     switch (command) {
+#ifdef CL_COMMAND_NDRANGE_KERNEL
     case CL_COMMAND_NDRANGE_KERNEL:
         return stat_gpu_NDRANGE_KERNEL;
+#endif
+#ifdef CL_COMMAND_TASK
     case CL_COMMAND_TASK:
         return stat_gpu_TASK;
+#endif
+#ifdef CL_COMMAND_NATIVE_KERNEL
     case CL_COMMAND_NATIVE_KERNEL:
         return stat_gpu_NATIVE_KERNEL;
+#endif
+#ifdef CL_COMMAND_READ_BUFFER
     case CL_COMMAND_READ_BUFFER:
         return stat_gpu_READ_BUFFER;
+#endif
+#ifdef CL_COMMAND_WRITE_BUFFER
     case CL_COMMAND_WRITE_BUFFER:
         return stat_gpu_WRITE_BUFFER;
+#endif
+#ifdef CL_COMMAND_COPY_BUFFER
     case CL_COMMAND_COPY_BUFFER:
         return stat_gpu_COPY_BUFFER;
+#endif
+#ifdef CL_COMMAND_READ_IMAGE
     case CL_COMMAND_READ_IMAGE:
         return stat_gpu_READ_IMAGE;
+#endif
+#ifdef CL_COMMAND_WRITE_IMAGE
     case CL_COMMAND_WRITE_IMAGE:
         return stat_gpu_WRITE_IMAGE;
+#endif
+#ifdef CL_COMMAND_COPY_IMAGE
     case CL_COMMAND_COPY_IMAGE:
         return stat_gpu_COPY_IMAGE;
+#endif
+#ifdef CL_COMMAND_COPY_IMAGE_TO_BUFFER
     case CL_COMMAND_COPY_IMAGE_TO_BUFFER:
         return stat_gpu_COPY_IMAGE_TO_BUFFER;
+#endif
+#ifdef CL_COMMAND_COPY_BUFFER_TO_IMAGE
     case CL_COMMAND_COPY_BUFFER_TO_IMAGE:
         return stat_gpu_COPY_BUFFER_TO_IMAGE;
+#endif
+#ifdef CL_COMMAND_MAP_BUFFER
     case CL_COMMAND_MAP_BUFFER:
         return stat_gpu_MAP_BUFFER;
+#endif
+#ifdef CL_COMMAND_MAP_IMAGE
     case CL_COMMAND_MAP_IMAGE:
         return stat_gpu_MAP_IMAGE;
+#endif
+#ifdef CL_COMMAND_UNMAP_MEM_OBJECT
     case CL_COMMAND_UNMAP_MEM_OBJECT:
         return stat_gpu_UNMAP_MEM_OBJECT;
+#endif
+#ifdef CL_COMMAND_MARKER
     case CL_COMMAND_MARKER:
         return stat_gpu_MARKER;
+#endif
+#ifdef CL_COMMAND_ACQUIRE_GL_OBJECTS
     case CL_COMMAND_ACQUIRE_GL_OBJECTS:
         return stat_gpu_ACQUIRE_GL_OBJECTS;
+#endif
+#ifdef CL_COMMAND_RELEASE_GL_OBJECTS
     case CL_COMMAND_RELEASE_GL_OBJECTS:
         return stat_gpu_RELEASE_GL_OBJECTS;
+#endif
+#ifdef CL_COMMAND_READ_BUFFER_RECT
     case CL_COMMAND_READ_BUFFER_RECT:
         return stat_gpu_READ_BUFFER_RECT;
+#endif
+#ifdef CL_COMMAND_WRITE_BUFFER_RECT
     case CL_COMMAND_WRITE_BUFFER_RECT:
         return stat_gpu_WRITE_BUFFER_RECT;
+#endif
+#ifdef CL_COMMAND_COPY_BUFFER_RECT
     case CL_COMMAND_COPY_BUFFER_RECT:
         return stat_gpu_COPY_BUFFER_RECT;
+#endif
+#ifdef CL_COMMAND_USER
     case CL_COMMAND_USER:
         return stat_gpu_USER;
+#endif
+#ifdef CL_COMMAND_BARRIER
     case CL_COMMAND_BARRIER:
         return stat_gpu_BARRIER;
+#endif
+#ifdef CL_COMMAND_MIGRATE_MEM_OBJECTS
     case CL_COMMAND_MIGRATE_MEM_OBJECTS:
         return stat_gpu_MIGRATE_MEM_OBJECTS;
+#endif
+#ifdef CL_COMMAND_FILL_BUFFER
     case CL_COMMAND_FILL_BUFFER:
         return stat_gpu_FILL_BUFFER;
+#endif
+#ifdef CL_COMMAND_FILL_IMAGE
     case CL_COMMAND_FILL_IMAGE:
         return stat_gpu_FILL_IMAGE;
+#endif
     default:
         return stat_gpu_other;
     }
@@ -329,32 +390,6 @@ static double sqrd(double val) {
     return val * val;
 }
 
-struct prl_global_state {
-    prl_time_t prl_start;
-    struct prl_global_config config;
-
-    cl_platform_id platform;
-    cl_device_id device;
-    cl_context context;
-
-    // Profiling
-    struct prl_stat global_stat;
-    struct prl_stat nonscop_stat;
-
-    // Benchmarking
-    struct prl_stat prev_global_stat;
-    prl_time_t bench_start;
-    size_t bench_stats_size;
-    struct prl_stat *bench_stats;
-
-    // linked lists
-    prl_program programs;
-    prl_scop scops;
-
-    // doubly linked list (prl_mem->global_mem_next, prl_mem->global_mem_prev)
-    // Needed to look up
-    prl_mem global_mems;
-};
 
 struct prl_scop_struct {
     prl_scop next;
@@ -450,14 +485,13 @@ enum prl_alloc_current_location {
 
     loc_transferring_to_host = loc_bit_transferring_dev_to_host,
     loc_transferring_to_dev = loc_bit_transferring_host_to_dev,
-
     loc_map_host = loc_host | loc_bit_mapped,
     loc_map_dev = loc_dev,
     loc_map_mapping = loc_transferring_to_host | loc_bit_mapped,
     loc_map_unmapping = loc_bit_transferring_host_to_dev,
 };
 
-#define loc_mask_current (loc_bit_host_is_current | loc_bit_dev_is_current)
+#define loc_mask_current      (loc_bit_host_is_current | loc_bit_dev_is_current)
 #define loc_mask_transferring (loc_bit_transferring_dev_to_host | loc_bit_transferring_host_to_dev)
 
 /* Describes a memory region */
@@ -466,10 +500,10 @@ enum prl_alloc_current_location {
 // 2. manually: user-allocated and released
 struct prl_mem_struct {
     // If this is a ad-hoc allocation, this is the scope it is used in (and can be freed when on leaving)
-    prl_scop_instance scopinst; //RENAME: scopinst
-                                //bool is_global;
+    prl_scop_instance scopinst;
+
     size_t size;
-    bool tag; // If this is a tag, it doesn't need to be freed explicitely.
+    bool tag; // If this is a tag, it doesn't need to be freed explicitly.
     char *name;
     enum prl_alloc_type type;
     cl_event transferevent;
@@ -479,16 +513,13 @@ struct prl_mem_struct {
     bool host_exposed;
     bool host_readable;
     bool host_writable;
-    //bool host_dirty;
-    //bool host_current;
+	bool host_can_do_arithmetic;
 
     cl_mem clmem; //RENAME: dev_clmem
     bool dev_owning;
     bool dev_exposed;
     bool dev_readable;
     bool dev_writable;
-    //bool dev_dirty;
-    //bool dev_current;
 
     // Where the current buffer content resides
     enum prl_alloc_current_location loc;
@@ -497,6 +528,7 @@ struct prl_mem_struct {
     bool transfer_to_host;   // On leaving a SCoP:
 
     prl_mem mem_prev, mem_next; // of prl_scop_instance->local_mems OR global_state.global_mems
+	prl_mem htable_next;
 };
 
 struct prl_scopinst_mem_struct {
@@ -504,10 +536,53 @@ struct prl_scopinst_mem_struct {
     bool owning;
 };
 
+
+struct prl_global_state {
+    //prl_time_t prl_start;
+    struct prl_global_config config;
+
+    cl_platform_id platform;
+    cl_device_id device;
+    cl_context context;
+
+    // Profiling
+    struct prl_stat global_stat;
+    //struct prl_stat nonscop_stat;
+
+    // Benchmarking
+    struct prl_stat prev_global_stat;
+    prl_time_t bench_start;
+    size_t bench_stats_size;
+    struct prl_stat *bench_stats;
+
+    // scopinst to use when we are outside a local scopinst
+    struct prl_scop_inst_struct noscopinst;
+
+    // linked lists
+    prl_program programs;
+    prl_scop scops;
+
+    // doubly linked list (prl_mem->global_mem_next, prl_mem->global_mem_prev)
+    // Needed to look up
+    prl_mem global_mems;
+};
+
+
+
 static bool prl_initialized = false;
 static struct prl_global_state global_state;
 
+#ifdef _MSC_VER
+#include <windows.h>
+#endif
+
 static prl_time_t timestamp() {
+#ifdef _MSC_VER
+	LARGE_INTEGER stamp,prec;
+	QueryPerformanceFrequency(&prec);
+	QueryPerformanceCounter(&stamp);
+	return (prl_time_t)(stamp.QuadPart* 1e9 / prec.QuadPart);
+#else
     if (!global_state.config.cpu_profiling)
         return 0;
 
@@ -518,9 +593,10 @@ static prl_time_t timestamp() {
     result *= 1000000000L;
     result += stamp.tv_nsec;
     return result;
+#endif
 }
 
-#define NOSCOPINST ((prl_scop_instance)NULL)
+//#define NOSCOPINST ((prl_scop_instance)NULL)
 
 //http://stackoverflow.com/questions/24326432/convenient-way-to-show-opencl-error-codes
 static const char *opencl_getErrorString(cl_int error) {
@@ -802,9 +878,8 @@ static void __ocl_report_error(const char *errinfo, const void *private_info, si
 #define CL_BLOCKING_FALSE CL_FALSE
 
 static struct prl_stat *scopstat(prl_scop_instance scopinst) {
-    if (scopinst)
+	assert(scopinst);
         return &scopinst->stat;
-    return &global_state.nonscop_stat;
 }
 
 static void add_time(prl_scop_instance scopinst, enum prl_stat_entry entry, prl_time_t duration) {
@@ -1156,7 +1231,7 @@ static void clGetDeviceInfo_checked(prl_scop_instance scopinst, cl_device_id dev
         opencl_error(err, "clGetDeviceInfo");
 }
 
-static cl_int clGetMemObjectInfo_checked(prl_scop_instance scopinst, cl_mem memobj,
+static void clGetMemObjectInfo_checked(prl_scop_instance scopinst, cl_mem memobj,
                                          cl_mem_info param_name,
                                          size_t param_value_size,
                                          void *param_value,
@@ -1168,7 +1243,7 @@ static cl_int clGetMemObjectInfo_checked(prl_scop_instance scopinst, cl_mem memo
     prl_time_t stop = timestamp();
     add_time(scopinst, stat_cpu_clGetMemObjectInfo, stop - start);
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetMemObjectInfo");
+        opencl_error(err, "clGetMemObjectInfo"); 
 }
 
 static void *malloc_checked(prl_scop_instance scopinst, size_t size) {
@@ -1230,7 +1305,16 @@ static void push_back_mem(prl_scop_instance scopinst, prl_mem mem) {
     scopinst->mems_size += 1;
 }
 
-static void stat_compute_medians(double medians[static const restrict STAT_ENTRIES], double relstddevs[static const restrict STAT_ENTRIES], size_t n, struct prl_stat data[static const restrict n]) {
+#define NOSCOPINST get_noscopinst()
+static prl_scop_instance get_noscopinst() {
+	return &global_state.noscopinst;
+}
+
+#ifdef _MSC_VER
+static void stat_compute_medians(double * __restrict medians, double * __restrict relstddevs, size_t n, struct prl_stat * __restrict data) {
+#else
+static void stat_compute_medians(double medians[STATIC_CONST_RESTRICT STAT_ENTRIES], double relstddevs[STATIC_CONST_RESTRICT STAT_ENTRIES], size_t n, struct prl_stat data[STATIC_CONST_RESTRICT n]) {
+#endif
     prl_time_t *sorted = malloc_checked(NOSCOPINST, n * sizeof *sorted);
     for (int j = 0; j < STAT_ENTRIES; j += 1) {
         if (n == 0) {
@@ -1245,7 +1329,7 @@ static void stat_compute_medians(double medians[static const restrict STAT_ENTRI
             prl_time_t val = data[i].entries[j];
             sorted[i] = val;
             sum += val;
-            sqrsum += sqrd(val);
+            sqrsum += sqrd((double)val);
         }
         double avg = ((double)sum) / n;
         double variance = sqrsum / n - sqrd(avg);
@@ -1255,7 +1339,7 @@ static void stat_compute_medians(double medians[static const restrict STAT_ENTRI
         qsort(sorted, n, sizeof *sorted, &cmp_time);
         double median;
         if (n % 2 == 0)
-            median = sorted[n / 2];
+            median = (double)sorted[n / 2];
         else
             median = ((double)sorted[n / 2] + (double)sorted[(n + 1) / 2]) / 2;
 
@@ -1335,7 +1419,7 @@ static void dump_finished_event(struct prl_pending_event *pendev, cl_command_typ
         break;
     case pending_other: {
         const char *cmdstr = statname[clcommand_to_stat_entry(cmdty)];
-        printf("%s: %fms\n", cmdstr, duration * 0.000001d);
+        printf("%s: %fms\n", cmdstr, duration * 0.000001);
     } break;
     }
 }
@@ -1666,8 +1750,11 @@ static void prl_mem_alloc_map(prl_mem mem, bool host_readable, bool host_writabl
         clqueue = scopinst->queue;
     else
         clqueue = clCreateCommandQueue_checked(scopinst, global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
-
+#ifdef CL_VERSION_1_2
     mem->host_mem = clEnqueueMapBuffer_checked(scopinst, clqueue, mem->clmem, CL_BLOCKING_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, mem->size, 0, NULL, NULL);
+#else
+    mem->host_mem = clEnqueueMapBuffer_checked(scopinst, clqueue, mem->clmem, CL_BLOCKING_TRUE, CL_MAP_WRITE, 0, mem->size, 0, NULL, NULL);
+#endif
     clFinish(clqueue);
 
     if (!scopinst)
@@ -1733,48 +1820,48 @@ static prl_mem prl_mem_lookup_global_ptr(void *host_ptr, size_t size) {
 }
 
 static cl_device_type devtypes[] = {
-    [PRL_TARGET_DEVICE_FIRST] CL_DEVICE_TYPE_DEFAULT,
-    [PRL_TARGET_DEVICE_FIXED] CL_DEVICE_TYPE_ALL,
+    [PRL_TARGET_DEVICE_FIRST] = CL_DEVICE_TYPE_DEFAULT,
+    [PRL_TARGET_DEVICE_FIXED] = CL_DEVICE_TYPE_ALL,
 
-    [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
-    [PRL_TARGET_DEVICE_ACC_ONLY] CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_ONLY] =CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_ONLY] =CL_DEVICE_TYPE_CPU,
+    [PRL_TARGET_DEVICE_ACC_ONLY]= CL_DEVICE_TYPE_ACCELERATOR,
 
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU] CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC] CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU]= CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU]= CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU]= CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU]= CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC]= CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] =CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
 
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC]= CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC]= CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU]= CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU]= CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] =CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU]= CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
 };
 
 // { cpu, gpu, acc, other }
 // 0 means never take
 static unsigned char devtypes_rank[][4] = {
     [PRL_TARGET_DEVICE_CPU_ONLY] = {4, 0, 0, 0},
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] { 4, 3, 0, 0 },
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC] { 4, 0, 3, 0 },
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] { 4, 3, 2, 0 },
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] { 4, 2, 3, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] ={ 4, 3, 0, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC]= { 4, 0, 3, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC]= { 4, 3, 2, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU]= { 4, 2, 3, 0 },
 
-    [PRL_TARGET_DEVICE_GPU_ONLY] { 0, 4, 0, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] { 3, 4, 0, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC] { 0, 4, 3, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] { 3, 4, 2, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] { 2, 4, 3, 0 },
+    [PRL_TARGET_DEVICE_GPU_ONLY]= { 0, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU]= { 3, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC]= { 0, 4, 3, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] ={ 3, 4, 2, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] ={ 2, 4, 3, 0 },
 
-    [PRL_TARGET_DEVICE_ACC_ONLY] { 0, 0, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU] { 3, 0, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU] { 0, 3, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] { 3, 2, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] { 2, 3, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_ONLY] ={ 0, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU]= { 3, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] ={ 0, 3, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] ={ 3, 2, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU]= { 2, 3, 4, 0 },
 };
 
 #if 0
@@ -1834,25 +1921,25 @@ static int get_int(const char *str) {
 }
 
 static const char *targetconfstr[] = {
-    [PRL_TARGET_DEVICE_FIRST] "first",
+    [PRL_TARGET_DEVICE_FIRST] ="first",
 
-    [PRL_TARGET_DEVICE_GPU_ONLY] "gpu",
-    [PRL_TARGET_DEVICE_CPU_ONLY] "cpu",
-    [PRL_TARGET_DEVICE_ACC_ONLY] "acc",
+    [PRL_TARGET_DEVICE_GPU_ONLY]= "gpu",
+    [PRL_TARGET_DEVICE_CPU_ONLY]= "cpu",
+    [PRL_TARGET_DEVICE_ACC_ONLY] ="acc",
 
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] "gpu_cpu",
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] "cpu_gpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU] "acc_cpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU] "acc_gpu",
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC] "gpu_acc",
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC] "cpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] ="gpu_cpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] ="cpu_gpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] ="acc_cpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU]= "acc_gpu",
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] ="gpu_acc",
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] ="cpu_acc",
 
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] "cpu_gpu_acc",
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] "gpu_cpu_acc",
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] "gpu_acc_cpu",
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] "cpu_acc_gpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] "acc_gpu_cpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] "acc_cpu_gpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] ="cpu_gpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] ="gpu_cpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU]= "gpu_acc_cpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] ="cpu_acc_gpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU]= "acc_gpu_cpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] ="acc_cpu_gpu",
 };
 
 #define LENGTHOF(ARR) (sizeof(ARR) / sizeof(ARR[0]))
@@ -1949,21 +2036,25 @@ static void print_stat_entry(const char *name, const int *count, double duration
     if (relstddev) {
         // Report relative standard error
         if (*relstddev != 0)
-            printf("%s%-25s:%8.3fms (\u00B1%5.1f%%)\n", prefix, name, duration * 0.000001d, 100 * *relstddev);
+            printf("%s%-25s:%8.3fms (\u00B1%5.1f%%)\n", prefix, name, duration * 0.000001, 100 * *relstddev);
         else
-            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001d);
+            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001);
     } else {
         // Report times
         if (count) {
             assert(*count > 0);
-            printf("%s%-25s:%8.3fms (%3d time%1s)\n", prefix, name, duration * 0.000001d, *count, (*count == 1) ? "" : "s");
+            printf("%s%-25s:%8.3fms (%3d time%1s)\n", prefix, name, duration * 0.000001, *count, (*count == 1) ? "" : "s");
         } else
-            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001d);
+            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001);
     }
 }
 
+#ifdef _MSC_VER
+static void print_stat(double durations[], int counts[], double relstddevs[], const char *prefix) {
+#else
 static void print_stat(double durations[static const restrict STAT_ENTRIES], int counts[const restrict STAT_ENTRIES], double relstddevs[const restrict STAT_ENTRIES], const char *prefix) {
-    assert(durations);
+#endif
+	assert(durations);
 
     //puts("===============================================================================");
     if (global_state.config.cpu_profiling) {
@@ -1997,7 +2088,7 @@ static void dump_entry(const char *name, double median, double relstddev) {
 
 void prl_prof_dump() {
     size_t n = global_state.bench_stats_size;
-    int intn = n;
+    int intn = (int)n;
 
     double medians[STAT_ENTRIES];
     double relstddevs[STAT_ENTRIES];
@@ -2065,7 +2156,7 @@ static void mem_free(prl_scop_instance scopinst, prl_mem mem) {
     free_checked(scopinst, mem);
 }
 
-void prl_release() {
+void prl_release(void) {
     if (!prl_initialized)
         return;
 
@@ -2128,7 +2219,7 @@ void prl_release() {
     if (dumping) {
         if (global_state.config.cpu_profiling) {
             const int one = 1;
-            print_stat_entry("PRL active for", &one, timestamp() - global_state.prl_start, NULL, global_state.config.profiling_prefix);
+            print_stat_entry("PRL active for", &one, timestamp() - global_state.noscopinst.scop_start, NULL, global_state.config.profiling_prefix);
         }
 
         double durations[STAT_ENTRIES];
@@ -2184,6 +2275,15 @@ static void dump_device() {
     free_checked(NOSCOPINST, driver_version);
 }
 
+static void prl_preinit() {
+	if (prl_initialized)
+		return;
+
+	  memset(&global_state, 0, sizeof global_state);
+}
+
+
+
 void prl_init() {
     if (prl_initialized)
         return;
@@ -2207,7 +2307,7 @@ void prl_init() {
         puts("");
     }
 
-    global_state.prl_start = timestamp();
+	global_state.noscopinst.scop_start = timestamp();
     enum prl_device_choice effective_device_choice = global_state.config.device_choice;
     int effective_platform = global_state.config.chosed_platform;
     int effective_device = global_state.config.chosen_device;
@@ -2260,7 +2360,7 @@ void prl_init() {
         cl_platform_id *platforms = malloc_checked(NOSCOPINST, num_platforms * sizeof *platforms);
         clGetPlatformIDs_checked(NOSCOPINST, num_platforms, platforms, NULL);
 
-        for (int i = 0; i < num_platforms; i += 1) {
+        for (cl_uint i = 0; i < num_platforms; i += 1) {
             cl_uint num_devices = 0;
             clGetDeviceIDs_checked(NOSCOPINST, platforms[i], devtypes[effective_device_choice], 0, NULL, &num_devices);
             if (num_devices == 0)
@@ -2269,7 +2369,7 @@ void prl_init() {
             cl_device_id *devices = malloc_checked(NOSCOPINST, num_devices * sizeof *devices);
             clGetDeviceIDs_checked(NOSCOPINST, platforms[i], devtypes[effective_device_choice], num_devices, devices, NULL);
 
-            for (int j = 0; j < num_devices; j += 1) {
+            for (cl_uint j = 0; j < num_devices; j += 1) {
                 cl_device_type devtype;
                 clGetDeviceInfo_checked(NOSCOPINST, devices[j], CL_DEVICE_TYPE, sizeof devtype, &devtype, NULL);
 
@@ -2304,12 +2404,25 @@ void prl_init() {
     global_state.context = clCreateContext_checked(NOSCOPINST, NULL, 1, &best_device, __ocl_report_error, NULL);
     atexit(prl_release);
 
+	
+
     if (dumping) {
         fputs("===============================================================================\n", stdout);
     }
 
     prl_initialized = 1;
 }
+
+
+
+
+
+static scopinst_init_queue(prl_scop_instance scopinst ) {
+    cl_command_queue clqueue = clCreateCommandQueue_checked(scopinst, global_state.context, global_state.device, any_gpu_profiling() ? CL_QUEUE_PROFILING_ENABLE : 0);
+    scopinst->queue = clqueue;
+}
+
+
 
 prl_scop_instance prl_scop_enter(prl_scop *scopref) {
     assert(scopref);
@@ -2326,14 +2439,12 @@ prl_scop_instance prl_scop_enter(prl_scop *scopref) {
     struct prl_scop_inst_struct dummystat = {0};
     prl_scop_instance scopinst = malloc_checked(&dummystat, sizeof *scopinst);
     memset(scopinst, 0, sizeof *scopinst);
-    memset(scopinst, 0, sizeof *scopinst);
-    scopinst->stat.entries[stat_cpu_malloc] += dummystat.stat.entries[stat_cpu_malloc];
-
-    cl_command_queue clqueue = clCreateCommandQueue_checked(scopinst, global_state.context, global_state.device, any_gpu_profiling() ? CL_QUEUE_PROFILING_ENABLE : 0);
-
     scopinst->scop = scop;
-    scopinst->queue = clqueue;
-    scopinst->scop_start = scop_start;
+	
+    scopinst->stat.entries[stat_cpu_malloc] += dummystat.stat.entries[stat_cpu_malloc];
+	scopinst->stat.counts[stat_cpu_malloc]  +=  dummystat.stat.counts[stat_cpu_malloc];
+	scopinst->scop_start = scop_start;
+
     return scopinst;
 }
 
@@ -2504,27 +2615,314 @@ static void eval_events(prl_scop_instance scopinst) {
     add_time(scopinst, stat_gpu_transfer_to_host, gpu_transfer_to_host);
 }
 
+
+static cl_command_queue scopinst_get_queue(prl_scop_instance scopinst) {
+	if (scopinst->queue)
+		return scopinst->queue;
+	assert(scopinst == NOSCOPINST);
+	scopinst_init_queue(scopinst);
+	assert(scopinst->queue);
+	return scopinst->queue;
+}
+
+// After allocation, {dev|host}_{readable|writable} are not allowed to change anymore
+static bool mem_is_allocated(prl_mem mem) {
+	return mem->host_mem || mem->clmem;
+}
+
+static bool mem_needs_host(prl_mem mem) {
+return mem->host_readable || mem->host_writable || mem->host_can_do_arithmetic;
+}
+
+static bool mem_needs_dev(prl_mem mem) {
+return mem->dev_readable || mem->dev_writable;
+}
+
+
+struct mem_hashtable {
+	size_t count;
+	size_t nDrawers;
+	prl_mem drawers[];
+};
+
+static size_t ptr_hash(void *ptr, size_t entries) {
+	return ((uintptr_t)ptr)%entries;
+}
+
+void mem_hashtable_insert(struct mem_hashtable *htable, prl_mem item) {
+	size_t drawerPos = ptr_hash(item, htable->nDrawers);
+	if (htable->drawers[drawerPos]) {
+		prl_mem prev =htable->drawers[drawerPos];
+		htable->drawers[drawerPos] = item;
+		item->htable_next = prev;
+	} else {
+		htable->drawers[drawerPos] = item;
+		item->htable_next = NULL;
+	}
+}
+
+
+static void rwbuf_init(prl_scop_instance scopinst, prl_mem mem) {
+	assert(mem->type == alloc_type_none);
+	mem->host_mem = NULL;
+	mem->clmem = NULL;
+	mem->loc = loc_none;
+}
+
+static void rwbuf_host_alloc(prl_scop_instance scopinst, prl_mem mem) {
+	assert(mem->type == alloc_type_rwbuf);
+	assert(!mem->host_mem);
+	assert(mem_needs_host(mem));
+
+	mem->host_mem = malloc_checked(scopinst, mem->size);
+}
+
+static void rwbuf_dev_alloc(prl_scop_instance scopinst, prl_mem mem) {
+	assert(mem->type == alloc_type_rwbuf);
+	assert(mem->dev_readable || mem->dev_writable);
+	assert(!mem->clmem);
+	assert(mem_needs_dev(mem));
+
+	cl_mem_flags memflags = 0;
+	if (mem->dev_readable && mem->dev_writable) {
+		memflags |= CL_MEM_READ_WRITE;
+	} else if (mem->dev_readable) {
+		memflags |= CL_MEM_READ_ONLY;
+	} else if (mem->dev_writable) {
+		memflags |= CL_MEM_WRITE_ONLY;
+	}
+
+	mem->clmem = clCreateBuffer_checked(scopinst, global_state.context, memflags, mem->size, NULL);
+}
+
+static void rwbuf_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
+	assert(mem->type == alloc_type_rwbuf);
+	assert(mem->loc & loc_bit_host_is_current);
+	assert(!(mem->loc & loc_mask_transferring));
+
+	cl_event event = NULL;
+	clEnqueueWriteBuffer_checked(scopinst, scopinst->queue, mem->clmem, is_blocking(), 0, mem->size, mem->host_mem, 0, NULL, need_events() ? &event : NULL);
+	if (is_blocking()) {
+		assert(!event || has_event_completed(scopinst, event));
+		push_back_event(scopinst, event, mem, NULL, true);
+		mem->loc |= loc_bit_dev_is_current;
+	} else {
+		mem->transferevent = event;
+		push_back_event(scopinst, event, mem, NULL, false);
+		mem->loc |= loc_bit_transferring_host_to_dev;
+	}
+}
+
+static void rwbuf_dev_to_host(prl_scop_instance scopinst, prl_mem mem) {
+	assert(mem->type == alloc_type_rwbuf);
+	assert(mem->loc & loc_bit_dev_is_current);
+	assert(!(mem->loc & loc_mask_transferring));
+
+	cl_command_queue queue = scopinst_get_queue(scopinst);
+	cl_event event;
+        clEnqueueReadBuffer_checked(scopinst, scopinst->queue, mem->clmem, is_blocking(), 0, mem->size, mem->host_mem, 0, NULL, need_events() ? &event : NULL);
+        if (is_blocking()) {
+			assert(!event || has_event_completed(scopinst, event));
+            push_back_event(scopinst, event, mem, NULL, true);
+			mem->loc |= loc_bit_host_is_current;
+        } else {
+            mem->transferevent = event;
+            push_back_event(scopinst, event, mem, NULL, false);
+			mem->loc |= loc_bit_transferring_dev_to_host;
+        }
+}
+
 static void ensure_host_allocated(prl_scop_instance scopinst, prl_mem mem) {
     assert(mem);
+	assert(mem_needs_host(mem));
 
     if (mem->host_mem)
         return;
 
     switch (mem->type) {
     case alloc_type_rwbuf:
-        mem->host_mem = malloc_checked(scopinst, mem->size);
-        mem->host_owning = true;
-        mem->host_exposed = false;
+	rwbuf_host_alloc(scopinst,mem);
         break;
     default:
         assert(!"No host allocation for this type");
     }
 
+    mem->host_owning = true;
+    mem->host_exposed = false;
     assert(mem->host_mem);
 }
 
+static void ensure_dev_allocated(prl_scop_instance scopinst, prl_mem mem) {
+    assert(mem);
+	assert(mem_needs_dev(mem));
+
+    if (mem->clmem)
+        return;
+
+    switch (mem->type) {
+    case alloc_type_rwbuf:
+	rwbuf_dev_alloc(scopinst, mem);
+        break;
+    default:
+        assert(!"No device allocation for this type");
+    }
+
+    mem->dev_owning = true;
+    mem->dev_exposed = false;
+    assert(mem->clmem);
+}
+
+static void mem_prepare_on_host(prl_scop_instance scopinst, prl_mem mem) {
+	assert(scopinst);
+	assert(mem);
+	assert(mem_needs_host(mem));
+
+	if (mem->loc & loc_bit_host_is_current || mem->loc & loc_bit_transferring_dev_to_host)
+		return;
+
+	assert(!(mem->loc & loc_mask_transferring));
+	ensure_host_allocated(scopinst, mem);
+
+	   switch (mem->type) {
+    case alloc_type_rwbuf:
+	rwbuf_device_to_host(scopinst, mem);
+        break;
+    default:
+        assert(!"No implementation for this type");
+    }
+}
+
+static void mem_prepare_on_dev(prl_scop_instance scopinst, prl_mem mem) {
+	assert(scopinst);
+	assert(mem);
+	assert(mem_needs_dev(mem));
+
+	if (mem->loc & loc_bit_dev_is_current || mem->loc & loc_bit_transferring_host_to_dev)
+		return;
+
+	assert(!(mem->loc & loc_mask_transferring));
+	ensure_dev_allocated(scopinst, mem);
+
+	switch (mem->type) {
+    case alloc_type_rwbuf:
+	rwbuf_device_to_dev(scopinst, mem);
+        break;
+    default:
+        assert(!"No implementation for this type");
+    }
+}
+
+static bool mem_finish_transfer(prl_scop_instance scopinst, prl_mem mem) {
+	assert(scopinst);
+	assert(mem);
+	assert(!(mem->loc & loc_bit_transferring_dev_to_host && mem->loc & loc_bit_transferring_host_to_dev));
+
+	if (mem->loc & loc_bit_transferring_dev_to_host) {
+		assert(mem->transferevent);
+		clWaitForEvents_checked(scopinst, 1,& mem->transferevent);
+		assert(has_event_completed(scopinst,mem->transferevent));
+		mem->transferevent = NULL;
+		mem->loc &= ~loc_mask_transferring;
+		mem->loc |= loc_bit_host_is_current;
+		return true;
+	} 
+	
+	if (mem->loc & loc_bit_transferring_host_to_dev) {
+		assert(mem->transferevent);
+		clWaitForEvents_checked(scopinst, 1,& mem->transferevent);
+		assert(has_event_completed(scopinst,mem->transferevent));
+		mem->transferevent = NULL;
+		mem->loc &= ~loc_mask_transferring;
+		mem->loc |= loc_bit_dev_is_current;
+	return true;
+	}
+
+	return false;
+}
+
+static void mem_establish_on_host(prl_scop_instance scopinst, prl_mem mem) {
+	assert(scopinst);
+	assert(mem);
+	assert(mem_needs_host(mem));
+
+	if (mem->loc & loc_bit_host_is_current)
+		return;
+
+	ensure_host_allocated(scopinst, mem);
+
+	if(!(mem->loc & loc_mask_transferring)) {
+		// Fast case: forget data on dev, if any
+		mem->loc = loc_host;	
+	} else if (mem->loc & loc_bit_transferring_dev_to_host) {
+		// mem_finish_transfer() will set loc to host 		
+	} else {
+		// Unusual case: transferring to wrong direction
+		// finish transfer, but then forget data
+		mem_finish_transfer(scopinst, mem);
+		mem->loc = loc_host;
+	}
+}
+
+static void mem_establish_on_dev(prl_scop_instance scopinst, prl_mem mem) {
+	assert(scopinst);
+	assert(mem);
+	assert(mem_needs_dev(mem));
+
+	if (mem->loc & loc_bit_dev_is_current)
+		return;
+
+	ensure_dev_allocated(scopinst, mem);
+
+	if(!(mem->loc & loc_mask_transferring)) {
+		// Fast case: forget data on host
+		mem->loc = loc_dev;	
+	} else if (mem->loc & loc_bit_transferring_host_to_dev) {
+		// mem_finish_transfer() will set loc to dev 		
+	} else {
+		// Unusual case: transferring to wrong direction
+		// finish transfer, but then forget data
+		mem_finish_transfer(scopinst, mem);
+		mem->loc = loc_dev;
+	}
+}
+
+
+static void mem_on_host(prl_scop_instance scopinst, prl_mem mem) {
+	assert(scopinst);
+	assert(mem);
+	assert(mem_needs_host(mem));
+
+	if (mem->loc & loc_bit_host_is_current)
+		return;
+
+	if (!(mem->loc & loc_bit_transferring_host_to_dev)) {
+		mem_prepare_on_host(scopinst, mem);
+	}
+
+	mem_finish_transfer(scopinst, mem);
+	assert(mem->loc & loc_bit_host_is_current);
+}
+
+static void mem_on_dev(prl_scop_instance scopinst, prl_mem mem) {
+	assert(scopinst);
+	assert(mem);
+	assert(mem_needs_dev(mem));
+
+	if (mem->loc & loc_bit_dev_is_current)
+		return;
+
+	if (!(mem->loc & loc_bit_transferring_host_to_dev)) {
+		mem_prepare_on_dev(scopinst, mem);
+	}
+
+	mem_finish_transfer(scopinst, mem);
+	assert(mem->loc & loc_bit_dev_is_current);
+}
+
+
+
 // Change location of buffer without necessarily preserving its contents
-static void ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
+static void ensure_on_host_(prl_scop_instance scopinst, prl_mem mem) {
     assert(scopinst);
     assert(mem);
 
@@ -2556,8 +2954,9 @@ static void ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
     }
 }
 
+
 // Call when we know that a transfer has finished; this function updates its status
-static void mem_event_finished(prl_scop_instance scopinst, prl_mem mem) {
+static void mem_event_finished_(prl_scop_instance scopinst, prl_mem mem) {
     assert(is_valid_loc(mem));
 
     if (mem->loc & loc_mask_transferring) {
@@ -2581,6 +2980,17 @@ static void mem_event_finished(prl_scop_instance scopinst, prl_mem mem) {
     }
 
     assert(is_valid_loc(mem));
+}
+
+static void mem_make_available_on_host(prl_scop_instance scopinst, prl_mem mem) {
+	assert(scopinst);
+	assert(scopinst);
+
+	if (!mem->transfer_to_host)
+		return;
+
+	if (!mem->host_readable && !mem->host_writable)
+		return;
 }
 
 void prl_scop_leave(prl_scop_instance scopinst) {
@@ -2773,24 +3183,7 @@ prl_mem prl_scop_get_mem(prl_scop_instance scopinst, void *host_mem, size_t size
     return lmem;
 }
 
-static void ensure_dev_allocated(prl_scop_instance scopinst, prl_mem mem) {
-    assert(mem);
 
-    if (mem->clmem)
-        return;
-
-    switch (mem->type) {
-    case alloc_type_rwbuf:
-        mem->clmem = clCreateBuffer_checked(scopinst, global_state.context, CL_MEM_READ_WRITE /*| CL_MEM_COPY_HOST_PTR*/, mem->size, NULL /*mem->host_mem*/);
-        mem->dev_owning = true;
-        mem->dev_exposed = false;
-        break;
-    default:
-        assert(!"No device allocation for this type");
-    }
-
-    assert(mem->clmem);
-}
 
 static void *get_exposed_host(prl_scop_instance scopinst, prl_mem mem) {
     ensure_host_allocated(scopinst, mem);
@@ -2884,6 +3277,9 @@ static bool is_mem_available_on_host(prl_mem mem) {
     return (mem->loc & loc_bit_host_is_current);
 }
 
+
+
+
 void prl_scop_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
     assert(scopinst);
     assert(mem);
@@ -2963,19 +3359,10 @@ void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
     }
 
     switch (mem->type) {
-    case alloc_type_rwbuf: {
-        cl_event event = NULL;
-        clEnqueueReadBuffer_checked(scopinst, scopinst->queue, mem->clmem, is_blocking(), 0, mem->size, mem->host_mem, 0, NULL, need_events() ? &event : NULL);
-        if (is_blocking()) {
-            assert(event);
-            mem->loc = loc_host;
-            push_back_event(scopinst, event, mem, NULL, true);
-        } else {
-            mem->loc = loc_transferring_to_host;
-            mem->transferevent = event;
-            push_back_event(scopinst, event, mem, NULL, false);
-        }
-    } break;
+    case alloc_type_rwbuf: 
+		rwbuf_dev_to_host(scopinst, mem);
+		break;
+#if 0
     case alloc_type_map: {
         cl_event event = NULL;
         void *mappedptr = clEnqueueMapBuffer_checked(scopinst, scopinst->queue, mem->clmem, is_blocking(), (mem->dev_readable ? CL_MAP_READ : 0) | (mem->dev_writable ? CL_MAP_WRITE : 0), 0, mem->size, 0, NULL, need_events() ? &event : NULL);
@@ -2990,6 +3377,7 @@ void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
             push_back_event(scopinst, event, mem, NULL, false);
         }
     } break;
+
     case alloc_type_host_only:
         // Nothing to do
         break;
@@ -2997,14 +3385,16 @@ void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
     case alloc_type_dev_only:
     case alloc_type_none:
     case alloc_type_svm:
-        assert(false);
+#endif
+	default:
+        assert(!"Case not implemented");
     }
     assert(mem->loc == loc_host || mem->loc == loc_transferring_to_host);
     assert(is_valid_loc(mem));
 }
 
-void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims, size_t grid_size[static const restrict grid_dims], int block_dims, size_t block_size[static const restrict block_dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]) {
-    assert(scopinst);
+void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims, size_t grid_size[ C99_STATIC_CONST_RESTRICT( grid_dims)], int block_dims, size_t block_size[ C99_STATIC_CONST_RESTRICT( static const restrict block_dims)], size_t n_args, struct prl_kernel_call_arg args[ C99_STATIC_CONST_RESTRICT( static const restrict n_args)]) {
+	assert(scopinst);
     assert(kernel);
     assert(grid_dims > 0);
     assert(grid_dims <= 3);
@@ -3241,7 +3631,6 @@ void __prl_npr_mem_tag(void *host_ptr, enum npr_mem_tags mode) {
             if (mem->loc & loc_bit_dev_is_current) {
                 //TODO: Refactor into more general function
                 cl_command_queue queue = clCreateCommandQueue_checked(NOSCOPINST, global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
-                cl_event event;
                 clEnqueueReadBuffer_checked(NOSCOPINST, queue, mem->clmem, CL_BLOCKING_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL);
                 //TODO: push_back_event(NOSCOPINST, event, mem, NULL, false);
                 clFinish_checked(NOSCOPINST, queue);
@@ -3257,3 +3646,7 @@ void __prl_npr_mem_tag(void *host_ptr, enum npr_mem_tags mode) {
 void __pencil_npr_mem_tag(void *location, enum npr_mem_tags mode) {
     __prl_npr_mem_tag(location, mode);
 }
+
+
+
+
