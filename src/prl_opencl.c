@@ -2631,9 +2631,9 @@ prl_mem prl_scop_get_mem(prl_scop_instance scopinst, void *host_mem, size_t size
             if (!gmem->name && name) {
                 gmem->name = strdup(name);
             }
-            if (gmem->size == 0)
-                gmem->size = size;
-            assert(gmem->size == size);
+            // TODO: Should only the amount of bytes specified by size.
+            if (gmem->size < size)
+		    gmem->size = size;
             if (!is_mem_registered(scopinst, gmem))
                 push_back_mem(scopinst, gmem);
             assert(is_valid_loc(gmem));
