@@ -2851,7 +2851,6 @@ void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
         cl_event event = NULL;
         clEnqueueReadBuffer_checked(scopinst, scopinst->queue, mem->clmem, is_blocking(), 0, mem->size, mem->host_mem, 0, NULL, need_events() ? &event : NULL);
         if (is_blocking()) {
-            assert(event);
             mem->loc = loc_host;
             push_back_event(scopinst, event, mem, NULL, true);
         } else {
