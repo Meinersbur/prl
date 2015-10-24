@@ -1144,7 +1144,7 @@ static void stat_compute_medians(double medians[static const restrict STAT_ENTRI
 
         qsort(sorted, n, sizeof *sorted, &cmp_time);
         double median;
-        if (n % 2 == 0)
+        if (n % 2 == 1)
             median = sorted[n / 2];
         else
             median = ((double)sorted[n / 2] + (double)sorted[(n + 1) / 2]) / 2;
