@@ -23,14 +23,18 @@ static const char *PRL_BLOCKING = "PRL_BLOCKING";
 static const char *PRL_PREFIX = "PRL_PREFIX";
 
 static const char *PRL_PROFILING_PREFIX = "PRL_PROFILING_PREFIX";
-static const char *PRL_PROFILING = "PRL_PROFILING";
-static const char *PRL_CPU_PROFILING = "PRL_CPU_PROFILING";
-static const char *PRL_GPU_PROFILING = "PRL_GPU_PROFILING";
-static const char *PRL_GPU_PROFILING_DETAILED = "PRL_GPU_PROFILING_DETAILED"; // Print duration of every queue item
+static const char *PRL_PROF_CPU = "PRL_PROF_CPU";
+static const char *PRL_PROF_GPU = "PRL_PROF_GPU";
+static const char *PRL_PROF_ALL="PRL_PROF_ALL";
+static const char *PRL_DUMP="PRL_DUMP";
+static const char *PRL_DUMP_CPU="PRL_DUMP_CPU";
+static const char *PRL_DUMP_GPU="PRL_DUMP_GPU";
+static const char *PRL_DUMP_ALL="PRL_DUMP_ALL";
+static const char *PRL_TRACE_GPU = "PRL_TRACE_GPU"; // Print duration of every queue item
 
-static const char *PRL_TIMINGS_PREFIX = "PRL_TIMINGS_PREFIX";
-static const char *PRL_TIMINGS_RUNS = "PRL_TIMINGS_RUNS";
-static const char *PRL_TIMINGS_DRY_RUNS = "PRL_TIMINGS_DRY_RUNS";
+static const char *PRL_PROF_PREFIX = "PRL_PROF_PREFIX";
+static const char *PRL_PROF_RUNS = "PRL_PROF_RUNS";
+static const char *PRL_PROF_DRY_RUNS = "PRL_PROF_DRY_RUNS";
 
 typedef int64_t prl_time_t; // Enough for 292 years in nanosecond resolution
 
@@ -68,7 +72,7 @@ struct prl_global_config {
     bool cpu_profiling;
     bool gpu_profiling;
     bool gpu_detailed_profiling;
-    bool profiling_dump_on_release;
+    bool dump_on_release;
     const char *profiling_prefix;
 
     int timing_runs;
@@ -1784,23 +1788,40 @@ static void env_config(struct prl_global_config *config) {
         config->bench_prefix = prefix;
     }
 
-    if ((profiling_str = getenv(PRL_PROFILING))) {
+    if ((profiling_str = getenv(PRL_PROF_ALL))) {
         bool profiling = get_bool(profiling_str);
-        config->cpu_profiling = profiling;
-        config->gpu_profiling = profiling;
-        config->profiling_dump_on_release |= profiling;
+        config->cpu_profiling |= profiling;
+        config->gpu_profiling |= profiling;
     }
-    if ((cpu_profiling_str = getenv(PRL_CPU_PROFILING))) {
+    if ((cpu_profiling_str = getenv(PRL_PROF_CPU))) {
         bool profiling = get_bool(cpu_profiling_str);
-        config->cpu_profiling = profiling;
-        config->profiling_dump_on_release |= profiling;
+        config->cpu_profiling |= profiling;
     }
-    if ((gpu_profiling_str = getenv(PRL_GPU_PROFILING))) {
+    if ((gpu_profiling_str = getenv(PRL_PROF_GPU))) {
         bool profiling = get_bool(gpu_profiling_str);
-        config->gpu_profiling = profiling;
-        config->profiling_dump_on_release |= profiling;
+        config->gpu_profiling |= profiling;
     }
-    if ((str = getenv(PRL_GPU_PROFILING_DETAILED))) {
+	if ((str = getenv(PRL_DUMP))) {
+	bool dump = get_bool(str);
+        config->dump_on_release |= dump;
+	}
+	if ((str = getenv(PRL_DUMP_CPU))) {
+	bool dump = get_bool(str);
+        config->cpu_profiling |= dump;
+        config->dump_on_release |= dump;
+	}
+	if ((str = getenv(PRL_DUMP_GPU))) {
+	bool dump = get_bool(str);
+        config->gpu_profiling |= dump;
+        config->dump_on_release |= dump;
+	}
+		if ((str = getenv(PRL_DUMP_ALL))) {
+	bool dump = get_bool(str);
+        config->cpu_profiling |= dump;
+        config->gpu_profiling |= dump;
+        config->dump_on_release |= dump;
+	}
+    if ((str = getenv(PRL_TRACE_GPU))) {
         bool detailed_gpu_profiling = get_bool(str);
         config->gpu_detailed_profiling = detailed_gpu_profiling;
     }
@@ -1809,14 +1830,14 @@ static void env_config(struct prl_global_config *config) {
         config->profiling_prefix = prefix;
     }
 
-    if ((prefix = getenv(PRL_TIMINGS_PREFIX))) {
+    if ((prefix = getenv(PRL_PROF_PREFIX))) {
         config->bench_prefix = prefix;
     }
-    if ((str = getenv(PRL_TIMINGS_DRY_RUNS))) {
+    if ((str = getenv(PRL_PROF_DRY_RUNS))) {
         config->timing_warmups = get_int(str);
         assert(config->timing_warmups >= 0);
     }
-    if ((str = getenv(PRL_TIMINGS_RUNS))) {
+    if ((str = getenv(PRL_PROF_RUNS))) {
         config->timing_runs = get_int(str);
         assert(config->timing_runs >= 1);
     }
@@ -1953,7 +1974,7 @@ void prl_release() {
     if (!prl_initialized)
         return;
 
-    bool dumping = global_state.config.profiling_dump_on_release;
+    bool dumping = global_state.config.dump_on_release;
     if (dumping) {
         puts("===============================================================================");
         puts("Shutting down PRL...");
@@ -2077,7 +2098,7 @@ void prl_init() {
     global_state.config = global_config;
     env_config(&global_state.config);
 
-    bool dumping = global_state.config.profiling_dump_on_release;
+    bool dumping = global_state.config.dump_on_release;
     if (dumping) {
         fputs("===============================================================================\n", stdout);
         puts("Initializing PRL...");
