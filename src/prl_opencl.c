@@ -1046,7 +1046,7 @@ static void clGetDeviceInfo_checked(prl_scop_instance scopinst, cl_device_id dev
         opencl_error(err, "clGetDeviceInfo");
 }
 
-static cl_int clGetMemObjectInfo_checked(prl_scop_instance scopinst, cl_mem memobj,
+static void clGetMemObjectInfo_checked(prl_scop_instance scopinst, cl_mem memobj,
                                          cl_mem_info param_name,
                                          size_t param_value_size,
                                          void *param_value,
