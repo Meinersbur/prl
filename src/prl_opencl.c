@@ -1201,7 +1201,7 @@ static void dump_finished_transfer_event(cl_command_type cmdty, prl_mem mem, prl
     assert(is_valid_loc(mem));
 
     enum prl_alloc_current_location direction = mem->loc & loc_mask_transferring;
-    assert(direction == loc_transferring_to_dev || direction == loc_transferring_to_host);
+    //assert(direction == loc_transferring_to_dev || direction == loc_transferring_to_host);
     const char *dirstr = (direction == loc_transferring_to_dev) ? "host->dev" : "dev->host";
     const char *cmdstr = statname[clcommand_to_stat_entry(cmdty)];
 
