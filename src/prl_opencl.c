@@ -2695,10 +2695,18 @@ static void rwbuf_dev_alloc(prl_scop_instance scopinst, prl_mem mem) {
 	mem->clmem = clCreateBuffer_checked(scopinst, global_state.context, memflags, mem->size, NULL);
 }
 
-static void rwbuf_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
+// Start transferring data from host to device.
+// Preconditions: 
+//   Host: allocated, current
+//   Dev:  allocated, not current
+// Postconditions:
+//   Dev current or transferring to dev
+static void rwbuf_host_to_dev(prl_scop_instance scopinst, prl_mem mem) {
 	assert(mem->type == alloc_type_rwbuf);
 	assert(mem->loc & loc_bit_host_is_current);
 	assert(!(mem->loc & loc_mask_transferring));
+	assert(mem->host_mem);
+	assert(mem->clmem);
 
 	cl_event event = NULL;
 	clEnqueueWriteBuffer_checked(scopinst, scopinst->queue, mem->clmem, is_blocking(), 0, mem->size, mem->host_mem, 0, NULL, need_events() ? &event : NULL);
@@ -2713,6 +2721,7 @@ static void rwbuf_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
 	}
 }
 
+// Start transferring data from device to host.
 static void rwbuf_dev_to_host(prl_scop_instance scopinst, prl_mem mem) {
 	assert(mem->type == alloc_type_rwbuf);
 	assert(mem->loc & loc_bit_dev_is_current);
@@ -2741,7 +2750,7 @@ static void ensure_host_allocated(prl_scop_instance scopinst, prl_mem mem) {
 
     switch (mem->type) {
     case alloc_type_rwbuf:
-	rwbuf_host_alloc(scopinst,mem);
+		rwbuf_host_alloc(scopinst,mem);
         break;
     default:
         assert(!"No host allocation for this type");
@@ -2772,10 +2781,12 @@ static void ensure_dev_allocated(prl_scop_instance scopinst, prl_mem mem) {
     assert(mem->clmem);
 }
 
+// Ensure that the data on host is current, transfering to host
 static void mem_prepare_on_host(prl_scop_instance scopinst, prl_mem mem) {
 	assert(scopinst);
 	assert(mem);
 	assert(mem_needs_host(mem));
+	assert(mem->loc & loc_mask_current);
 
 	if (mem->loc & loc_bit_host_is_current || mem->loc & loc_bit_transferring_dev_to_host)
 		return;
@@ -2785,17 +2796,19 @@ static void mem_prepare_on_host(prl_scop_instance scopinst, prl_mem mem) {
 
 	   switch (mem->type) {
     case alloc_type_rwbuf:
-	rwbuf_device_to_host(scopinst, mem);
+		rwbuf_dev_to_host(scopinst, mem);
         break;
     default:
         assert(!"No implementation for this type");
     }
 }
 
+// Ensure that to data on dev is current, or transferrign to it
 static void mem_prepare_on_dev(prl_scop_instance scopinst, prl_mem mem) {
 	assert(scopinst);
 	assert(mem);
 	assert(mem_needs_dev(mem));
+	assert(mem->loc & loc_mask_current);
 
 	if (mem->loc & loc_bit_dev_is_current || mem->loc & loc_bit_transferring_host_to_dev)
 		return;
@@ -2805,13 +2818,14 @@ static void mem_prepare_on_dev(prl_scop_instance scopinst, prl_mem mem) {
 
 	switch (mem->type) {
     case alloc_type_rwbuf:
-	rwbuf_device_to_dev(scopinst, mem);
+		rwbuf_host_to_dev(scopinst, mem);
         break;
     default:
         assert(!"No implementation for this type");
     }
 }
 
+// Wait for all transfers to be finished
 static bool mem_finish_transfer(prl_scop_instance scopinst, prl_mem mem) {
 	assert(scopinst);
 	assert(mem);
@@ -2834,12 +2848,13 @@ static bool mem_finish_transfer(prl_scop_instance scopinst, prl_mem mem) {
 		mem->transferevent = NULL;
 		mem->loc &= ~loc_mask_transferring;
 		mem->loc |= loc_bit_dev_is_current;
-	return true;
+		return true;
 	}
 
 	return false;
 }
 
+// Ensure that data on host is current or transfering to it.
 static void mem_establish_on_host(prl_scop_instance scopinst, prl_mem mem) {
 	assert(scopinst);
 	assert(mem);
@@ -2863,6 +2878,7 @@ static void mem_establish_on_host(prl_scop_instance scopinst, prl_mem mem) {
 	}
 }
 
+// Ensure that data on dev is current or transfering to it.
 static void mem_establish_on_dev(prl_scop_instance scopinst, prl_mem mem) {
 	assert(scopinst);
 	assert(mem);
@@ -2886,7 +2902,7 @@ static void mem_establish_on_dev(prl_scop_instance scopinst, prl_mem mem) {
 	}
 }
 
-
+// Ensure that data on host is current.
 static void mem_on_host(prl_scop_instance scopinst, prl_mem mem) {
 	assert(scopinst);
 	assert(mem);
@@ -2903,6 +2919,7 @@ static void mem_on_host(prl_scop_instance scopinst, prl_mem mem) {
 	assert(mem->loc & loc_bit_host_is_current);
 }
 
+// Ensure that data on dev is current.
 static void mem_on_dev(prl_scop_instance scopinst, prl_mem mem) {
 	assert(scopinst);
 	assert(mem);
