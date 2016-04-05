@@ -415,6 +415,9 @@ struct prl_kernel_struct {
 
     cl_kernel kernel;
 
+    prl_time_t total_duration;
+    int total_count;
+
     prl_kernel next;
 };
 
@@ -1970,6 +1973,65 @@ static void mem_free(prl_scop_instance scopinst, prl_mem mem) {
     free_checked(scopinst, mem);
 }
 
+typedef void(foreach_program_callback)(prl_program program, void *user);
+typedef void(foreach_kernel_callback)(prl_kernel kernel, void *user);
+static void global_foreach_kernel(foreach_program_callback *program_callback, foreach_kernel_callback *kernel_callback, void *user) {
+    prl_program program = global_state.programs;
+    while (program) {
+        prl_program nextprogram = program->next;
+
+        if (kernel_callback) {
+            prl_kernel kernel = program->kernels;
+            while (kernel) {
+                prl_kernel nextkernel = kernel->next;
+
+                (*kernel_callback)(kernel, user);
+
+                kernel = nextkernel;
+            }
+        }
+
+        if (program_callback)
+            (*program_callback)(program, user);
+
+        program = nextprogram;
+    }
+}
+
+static void callback_free_kernel_resources(prl_kernel kernel, void *user) {
+    if (kernel->kernel) {
+        clReleaseKernel_checked(NOSCOPINST, kernel->kernel);
+        kernel->kernel = NULL;
+    }
+}
+
+static void callback_free_kernel(prl_kernel kernel, void *user) {
+    callback_free_kernel_resources(kernel, user);
+
+    free_checked(NOSCOPINST, kernel->name);
+    free_checked(NOSCOPINST, kernel);
+}
+
+static void callback_kernel_print_stat(prl_kernel kernel, void *user) {
+    print_stat_entry(kernel->name, &kernel->total_count, kernel->total_duration, NULL, global_state.config.profiling_prefix);
+}
+
+static void callback_free_program_resources(prl_program program, void *user) {
+    if (program->program) {
+        clReleaseProgram(program->program);
+        program->program = NULL;
+    }
+
+    free_checked(NOSCOPINST, program->filename);
+    program->filename = NULL;
+}
+
+static void callback_free_program(prl_program program, void *user) {
+    callback_free_program_resources(program, user);
+
+    free_checked(NOSCOPINST, program);
+}
+
 void prl_release() {
     if (!prl_initialized)
         return;
@@ -1980,29 +2042,10 @@ void prl_release() {
         puts("Shutting down PRL...");
     }
 
-    prl_program program = global_state.programs;
-    while (program) {
+    size_t nKernels = 0;
+    struct prl_kerneltime *kerneltimes = NULL;
 
-        prl_kernel kernel = program->kernels;
-        while (kernel) {
-            assert(kernel);
-            prl_kernel nextkernel = kernel->next;
-            if (kernel->kernel)
-                clReleaseKernel_checked(NOSCOPINST, kernel->kernel);
-            free_checked(NOSCOPINST, kernel->name);
-            free_checked(NOSCOPINST, kernel);
-
-            kernel = nextkernel;
-        }
-
-        prl_program nextprogram = program->next;
-        if (program->program)
-            clReleaseProgram(program->program);
-        free_checked(NOSCOPINST, program->filename);
-        free_checked(NOSCOPINST, program);
-
-        program = nextprogram;
-    }
+    global_foreach_kernel(&callback_free_program_resources, &callback_free_kernel_resources, NULL);
 
     prl_scop scop = global_state.scops;
     while (scop) {
@@ -2042,8 +2085,14 @@ void prl_release() {
         }
         puts("");
         print_stat(durations, global_state.global_stat.counts, NULL, global_state.config.profiling_prefix);
+        if (global_state.config.cpu_profiling) {
+            puts("");
+            global_foreach_kernel(NULL, &callback_kernel_print_stat, NULL);
+        }
         puts("===============================================================================");
     }
+
+    global_foreach_kernel(&callback_free_program, &callback_free_kernel, NULL);
 
     prl_initialized = 0;
 }
@@ -2377,9 +2426,16 @@ static void eval_events(prl_scop_instance scopinst) {
 
         assert(status == CL_COMPLETE);
         assert(start <= stop);
-        add_time(scopinst, clcommand_to_stat_entry(cmdty), stop - start);
+        prl_time_t duration = stop - start;
+
+        add_time(scopinst, clcommand_to_stat_entry(cmdty), duration);
+        if (pendev->type == pending_compute) {
+            pendev->kernel->total_duration += duration;
+            pendev->kernel->total_count += 1;
+        }
+
         if (global_state.config.gpu_detailed_profiling)
-            dump_finished_event(pendev, cmdty, stop - start);
+            dump_finished_event(pendev, cmdty, duration);
 
         profs[i].event = event;
         profs[i].start = start;
@@ -2625,6 +2681,8 @@ void prl_scop_init_kernel(prl_scop_instance scop, prl_kernel *kernelref, prl_pro
         kernel->name = strdup(kernelname);
         kernel->kernel = clkernel;
         kernel->program = program;
+        kernel->total_duration = 0;
+        kernel->total_count = 0;
         kernel->next = program->kernels;
         program->kernels = kernel;
         *kernelref = kernel;
