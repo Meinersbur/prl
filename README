@@ -32,18 +32,16 @@ This version of the runtime library can profile PENCIL programs automatically.  
 
 ### Ad-hoc Profiling (stats)
 
-
 This can be enabled by setting the environment variables
 
-	PRL_CPU_PROFILING=1
-	PRL_GPU_PROFILING=1
-	PRL_GPU_PROFILING_DETAILED=1
+	PRL_DUMP_CPU=1
+	PRL_DUMP_GPU=1
 
-	PRL_PROFLING=1
+	PRL_DUMP_ALL=1
 
 sets both of them.  The will output statistics to stdout.
 
-PRL_CPU_PROFILING will print how long calls to the OpenCL API took on the CPU.  PRL_GPU_PROFILING prints the durations of tasks on the GPU as reported by OpenCL itself.  It is printed as summary when the program ends. PRL_GPU_PROFILING_DETAILED will print the duration of every OpenCL queue item.
+PRL_DUMP_CPU will print how long calls to the OpenCL API took on the CPU.  PRL_DUMP_GPU prints the durations of tasks on the GPU as reported by OpenCL itself.  It is printed as summary when the program ends. PRL_TRACE_GPU will print the duration of every OpenCL queue item.
 
 
 ### Benchmarking (timings)
@@ -56,13 +54,13 @@ which does basically this:
 
 	prl_prof_reset();
 
-	for (auto i = 0; i < PRL_TIMINGS_DRY_RUNS; ++i) {
+	for (auto i = 0; i < PRL_PROF_DRY_RUNS; ++i) {
 		if (init_callback) (*init_callback)(init_user);
 		(*timed_func)(user);
 		if (finit_callback) (*finit_callback)(finit_user);
 	}
 
-	for (auto i = 0; i < PRL_TIMINGS_RUNS; ++i) {
+	for (auto i = 0; i < PRL_PROF_RUNS; ++i) {
 		if (init_callback) (*init_callback)(init_user);
 		prl_prof_start();
 		(*timed_func)(user);
@@ -73,7 +71,7 @@ which does basically this:
 	prl_prof_dump();
 
 
-PRL_TIMINGS_RUNS and PRL_TIMINGS_DRY_RUNS are environment variables that can be set.  The defaults are 1 for dry runs and 10 for timed runs.  Dry runs allow eliminating first-time effect like cold memory cashes and compiling the OpenCL program.
+PRL_PROF_RUNS and PRL_PROF_DRY_RUNS are environment variables that can be set.  The defaults are 1 for dry runs and 10 for timed runs.  Dry runs allow eliminating first-time effect like cold memory cashes and compiling the OpenCL program.
 
 The execution time between 'prl_prof_start()' and 'prl_prof_stop()' is measured.  Since it is executed multiple times, it records the time of every execution.  The data is printed to stdout on 'prl_prof_dump()'.  It prints the median times and relative standard deviation of all profiling items.
 
