@@ -1208,8 +1208,15 @@ static void dump_finished_transfer_event(cl_command_type cmdty, prl_mem mem, prl
     assert(is_valid_loc(mem));
 
     enum prl_alloc_current_location direction = mem->loc & loc_mask_transferring;
-    assert(direction == loc_transferring_to_dev || direction == loc_transferring_to_host);
-    const char *dirstr = (direction == loc_transferring_to_dev) ? "host->dev" : "dev->host";
+    const char *dirstr = "unkown transfer";
+    switch (direction) {
+    case loc_transferring_to_dev:
+        dirstr = "host->dev";
+        break;
+    case loc_transferring_to_host:
+        dirstr = "dev->host";
+        break;
+    }
     const char *cmdstr = statname[clcommand_to_stat_entry(cmdty)];
 
     if (mem->name)
