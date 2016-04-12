@@ -1783,7 +1783,7 @@ static void env_config(struct prl_global_config *config) {
             assert(0 <= env_device && env_device <= 255);
             config->device_choice = PRL_TARGET_DEVICE_FIXED;
             config->chosen_platform = env_platform;
-            config->chosen_platform = env_device;
+            config->chosen_device = env_device;
         } else {
             fputs("cannot read env PRL_TARGET_DEVICE\n", stderr); //TODO: Central error handling
             exit(1);
