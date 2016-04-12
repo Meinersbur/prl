@@ -63,7 +63,7 @@ enum prl_device_choice {
 
 struct prl_global_config {
     enum prl_device_choice device_choice;
-    int chosed_platform;
+    int chosen_platform;
     int chosen_device;
 
     bool blocking;
@@ -80,7 +80,7 @@ struct prl_global_config {
 };
 static struct prl_global_config global_config = {
   .device_choice = PRL_TARGET_DEVICE_FIRST,
-  .chosed_platform = 0,
+  .chosen_platform = 0,
   .chosen_device = 0,
 
   .blocking = false,
@@ -1782,8 +1782,8 @@ static void env_config(struct prl_global_config *config) {
             assert(0 <= env_platform && env_platform <= 255);
             assert(0 <= env_device && env_device <= 255);
             config->device_choice = PRL_TARGET_DEVICE_FIXED;
-            config->chosed_platform = env_platform;
-            config->chosed_platform = env_device;
+            config->chosen_platform = env_platform;
+            config->chosen_platform = env_device;
         } else {
             fputs("cannot read env PRL_TARGET_DEVICE\n", stderr); //TODO: Central error handling
             exit(1);
@@ -2170,7 +2170,7 @@ void prl_init() {
 
     global_state.prl_start = timestamp();
     enum prl_device_choice effective_device_choice = global_state.config.device_choice;
-    int effective_platform = global_state.config.chosed_platform;
+    int effective_platform = global_state.config.chosen_platform;
     int effective_device = global_state.config.chosen_device;
 
     cl_device_id best_device = NULL;
