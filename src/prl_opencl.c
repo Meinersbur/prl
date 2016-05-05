@@ -128,6 +128,7 @@ enum prl_stat_entry {
     stat_cpu_clReleaseKernel,
     stat_cpu_clGetDeviceInfo,
     stat_cpu_clGetMemObjectInfo,
+    stat_cpu_clCreateProgramWithSource,
 
     // OpenCL profiling
     stat_gpu_total, // Time spent on GPU from start of first task to end of last task
@@ -261,6 +262,7 @@ static const char *statname[] = {
     [stat_cpu_clReleaseKernel] = "clReleaseKernel",
     [stat_cpu_clGetDeviceInfo] = "clGetDeviceInfo",
     [stat_cpu_clGetMemObjectInfo] = "clGetMemObjectInfo",
+    [stat_cpu_clCreateProgramWithSource] = "clCreateProgramWithSource",
 
     [stat_gpu_total] = "total",
     [stat_gpu_working] = "working",
@@ -2560,13 +2562,13 @@ void prl_scop_leave(prl_scop_instance scopinst) {
     prl_mem lmem = scopinst->local_mems;
     while (lmem) {
         assert(lmem->scopinst);
-        if (lmem->host_readable || lmem->host_readable)
+        if (lmem->host_readable || lmem->host_writable)
             ensure_on_host(scopinst, lmem);
         lmem = lmem->mem_next;
     }
     for (int i = 0; i < scopinst->mems_size; i += 1) {
         prl_mem gmem = scopinst->mems[i];
-        if (gmem->host_readable || gmem->host_readable)
+        if (gmem->host_readable || gmem->host_writable)
             ensure_on_host(scopinst, gmem);
     }
 
@@ -2624,11 +2626,15 @@ void prl_scop_program_from_file(prl_scop_instance scopinst, prl_program *program
     program->filename = strdup(filename);
 }
 
-#define clCreateProgramWithSource_checked(context, count, strings, lengths) clCreateProgramWithSource_checked_impl(context, count, strings, lengths, __FILE__, __LINE__)
-static cl_program clCreateProgramWithSource_checked_impl(cl_context context, cl_uint count, const char **strings, const size_t *lengths, const char *file, int line) {
+static cl_program clCreateProgramWithSource_checked(prl_scop_instance scopinst, cl_context context, cl_uint count, const char **strings, const size_t *lengths) {
     cl_int err = CL_INT_MIN;
+
+    prl_time_t start = timestamp();
     cl_program result = clCreateProgramWithSource(context, count, strings, lengths, &err);
-    if (err != 0)
+    prl_time_t stop = timestamp();
+    add_time(scopinst, stat_cpu_clCreateProgramWithSource, stop - start);
+
+    if (err != CL_SUCCESS || !result)
         opencl_error(err, "clCreateProgramWithSource");
     return result;
 }
@@ -2646,7 +2652,7 @@ void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programr
             str_size = strlen(str);
         else
             str_size -= 1;
-        cl_program clprogram = clCreateProgramWithSource_checked(global_state.context, 1, &str, &str_size);
+        cl_program clprogram = clCreateProgramWithSource_checked(scopinst, global_state.context, 1, &str, &str_size);
 
         cl_int err = clBuildProgram(clprogram, 0, NULL, build_options, NULL, NULL);
         if (err < 0) { //TODO: Unified error handling
