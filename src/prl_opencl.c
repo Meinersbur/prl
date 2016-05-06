@@ -129,6 +129,8 @@ enum prl_stat_entry {
     stat_cpu_clGetDeviceInfo,
     stat_cpu_clGetMemObjectInfo,
     stat_cpu_clCreateProgramWithSource,
+    stat_cpu_clGetProgramBuildInfo,
+    stat_cpu_clBuildProgram,
 
     // OpenCL profiling
     stat_gpu_total, // Time spent on GPU from start of first task to end of last task
@@ -263,8 +265,10 @@ static const char *statname[] = {
     [stat_cpu_clGetDeviceInfo] = "clGetDeviceInfo",
     [stat_cpu_clGetMemObjectInfo] = "clGetMemObjectInfo",
     [stat_cpu_clCreateProgramWithSource] = "clCreateProgramWithSource",
+    [stat_cpu_clGetProgramBuildInfo] = "clGetProgramBuildInfo",
+    [stat_cpu_clBuildProgram] = "clBuildProgram",
 
-    [stat_gpu_total] = "total",
+                                  [stat_gpu_total] = "total",
     [stat_gpu_working] = "working",
     [stat_gpu_idle] = "idle",
 
@@ -1064,6 +1068,43 @@ static void clGetMemObjectInfo_checked(prl_scop_instance scopinst, cl_mem memobj
     add_time(scopinst, stat_cpu_clGetMemObjectInfo, stop - start);
     if (err != CL_SUCCESS)
         opencl_error(err, "clGetMemObjectInfo");
+}
+
+static cl_program clCreateProgramWithSource_checked(prl_scop_instance scopinst, cl_context context, cl_uint count, const char **strings, const size_t *lengths) {
+    cl_int err = CL_INT_MIN;
+
+    prl_time_t start = timestamp();
+    cl_program result = clCreateProgramWithSource(context, count, strings, lengths, &err);
+    prl_time_t stop = timestamp();
+    add_time(scopinst, stat_cpu_clCreateProgramWithSource, stop - start);
+
+    if (err != CL_SUCCESS || !result)
+        opencl_error(err, "clCreateProgramWithSource");
+    return result;
+}
+
+static void clGetProgramBuildInfo_checked(prl_scop_instance scopinst, cl_program program, cl_device_id device, cl_program_build_info param_name, size_t param_value_size, void *param_value, size_t *param_value_size_ret) {
+    prl_time_t start = timestamp();
+    cl_int err = clGetProgramBuildInfo(program, device, param_name, param_value_size, param_value, param_value_size_ret);
+    prl_time_t stop = timestamp();
+    add_time(scopinst, stat_cpu_clGetProgramBuildInfo, stop - start);
+
+    if (err != CL_SUCCESS)
+        opencl_error(err, "clGetProgramBuildInfo");
+}
+
+static bool clBuildProgram_checked(prl_scop_instance scopinst, cl_program program,
+                                   cl_uint num_devices,
+                                   const cl_device_id *device_list,
+                                   const char *options,
+                                   void (*pfn_notify)(cl_program, void *user_data),
+                                   void *user_data) {
+    prl_time_t start = timestamp();
+    cl_int err = clBuildProgram(program, num_devices, device_list, options, pfn_notify, user_data);
+    prl_time_t stop = timestamp();
+    add_time(scopinst, stat_cpu_clBuildProgram, stop - start);
+
+	return err!=CL_SUCCESS;
 }
 
 static void *malloc_checked(prl_scop_instance scopinst, size_t size) {
@@ -2626,19 +2667,6 @@ void prl_scop_program_from_file(prl_scop_instance scopinst, prl_program *program
     program->filename = strdup(filename);
 }
 
-static cl_program clCreateProgramWithSource_checked(prl_scop_instance scopinst, cl_context context, cl_uint count, const char **strings, const size_t *lengths) {
-    cl_int err = CL_INT_MIN;
-
-    prl_time_t start = timestamp();
-    cl_program result = clCreateProgramWithSource(context, count, strings, lengths, &err);
-    prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clCreateProgramWithSource, stop - start);
-
-    if (err != CL_SUCCESS || !result)
-        opencl_error(err, "clCreateProgramWithSource");
-    return result;
-}
-
 // str_size including NULL character
 void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programref, const char *str, size_t str_size, const char *build_options) {
     assert(scopinst);
@@ -2654,14 +2682,13 @@ void prl_scop_program_from_str(prl_scop_instance scopinst, prl_program *programr
             str_size -= 1;
         cl_program clprogram = clCreateProgramWithSource_checked(scopinst, global_state.context, 1, &str, &str_size);
 
-        cl_int err = clBuildProgram(clprogram, 0, NULL, build_options, NULL, NULL);
-        if (err < 0) { //TODO: Unified error handling
+        bool err = clBuildProgram_checked(scopinst, clprogram, 0, NULL, build_options, NULL, NULL);
+        if (err) { //TODO: Unified error handling
             fprintf(stderr, "Error during program build\n");
             size_t msgs_size;
-            err = clGetProgramBuildInfo(clprogram, global_state.device, CL_PROGRAM_BUILD_LOG, 0, NULL, &msgs_size);
+            clGetProgramBuildInfo_checked(scopinst, clprogram, global_state.device, CL_PROGRAM_BUILD_LOG, 0, NULL, &msgs_size);
             char *msgs = malloc(msgs_size + 1);
-            err = clGetProgramBuildInfo(clprogram, global_state.device, CL_PROGRAM_BUILD_LOG, msgs_size, msgs, NULL);
-            assert(err >= 0);
+            clGetProgramBuildInfo_checked(scopinst, clprogram, global_state.device, CL_PROGRAM_BUILD_LOG, msgs_size, msgs, NULL);
             msgs[msgs_size] = '\0';
             fputs(msgs, stderr);
             free(msgs);
