@@ -1855,21 +1855,21 @@ static void env_config(struct prl_global_config *config) {
         config->gpu_profiling |= profiling;
     }
 	if ((str = getenv(PRL_DUMP))) {
-	bool dump = get_bool(str);
+        bool dump = get_bool(str);
         config->dump_on_release |= dump;
 	}
 	if ((str = getenv(PRL_DUMP_CPU))) {
-	bool dump = get_bool(str);
+        bool dump = get_bool(str);
         config->cpu_profiling |= dump;
         config->dump_on_release |= dump;
 	}
 	if ((str = getenv(PRL_DUMP_GPU))) {
-	bool dump = get_bool(str);
+        bool dump = get_bool(str);
         config->gpu_profiling |= dump;
         config->dump_on_release |= dump;
 	}
-		if ((str = getenv(PRL_DUMP_ALL))) {
-	bool dump = get_bool(str);
+    if ((str = getenv(PRL_DUMP_ALL))) {
+        bool dump = get_bool(str);
         config->cpu_profiling |= dump;
         config->gpu_profiling |= dump;
         config->dump_on_release |= dump;
@@ -2226,17 +2226,17 @@ void prl_init() {
     } break;
     case PRL_TARGET_DEVICE_FIXED: {
         cl_platform_id *platforms = malloc_checked(NOSCOPINST, (effective_platform + 1) * sizeof *platforms);
-        cl_uint received_platforms = 0;
-        clGetPlatformIDs_checked(NOSCOPINST, effective_platform + 1, platforms, &received_platforms);
-        assert(received_platforms == effective_platform + 1);
+        cl_uint available_platforms = 0;
+        clGetPlatformIDs_checked(NOSCOPINST, effective_platform + 1, platforms, &available_platforms);
+        assert(available_platforms > effective_platform);
         best_platform = platforms[effective_platform];
-        free_checked(NOSCOPINST, best_platform);
+        free_checked(NOSCOPINST, platforms);
 
         assert(best_platform);
         cl_device_id *devices = malloc_checked(NOSCOPINST, (effective_device + 1) * sizeof *devices);
-        cl_uint received_devices = 0;
-        clGetDeviceIDs_checked(NOSCOPINST, best_platform, CL_DEVICE_TYPE_ALL, effective_device + 1, devices, &received_devices);
-        assert(received_devices == effective_device + 1);
+        cl_uint available_devices = 0;
+        clGetDeviceIDs_checked(NOSCOPINST, best_platform, CL_DEVICE_TYPE_ALL, effective_device + 1, devices, &available_devices);
+        assert(available_devices > effective_device);
         best_device = devices[effective_device];
         free_checked(NOSCOPINST, devices);
     } break;
