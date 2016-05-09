@@ -63,6 +63,10 @@ void prl_mem_free(prl_mem mem);
 
 void *prl_mem_get_host_mem(prl_mem mem);
 
+void prl_mem_change_flags(prl_mem mem, enum prl_mem_flags add_flags, enum prl_mem_flags remove_flags);
+void prl_mem_add_flags(prl_mem mem, enum prl_mem_flags add_flags);
+void prl_mem_remove_flags(prl_mem mem, enum prl_mem_flags remove_flags);
+
 #if defined(__cplusplus)
 }
 #endif

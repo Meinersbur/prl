@@ -3212,24 +3212,21 @@ prl_mem prl_opencl_mem_manage(void *host_ptr, cl_mem dev_ptr, enum prl_mem_flags
     return gmem;
 }
 
-void __prl_npr_mem_tag(void *host_ptr, enum npr_mem_tags mode) {
-    prl_init();
+void prl_mem_change_flags(prl_mem mem, enum prl_mem_flags add_flags, enum prl_mem_flags remove_flags) {
+	assert(mem);
+	assert((add_flags & !(prl_mem_host_noread | prl_mem_host_nowrite)) == 0);
+	assert((remove_flags & !(prl_mem_host_noread | prl_mem_host_nowrite)) == 0);
+	assert((add_flags & remove_flags) == 0);
 
-    bool enable_read = mode & PENCIL_NPR_MEM_READ;
-    bool enable_write = mode & PENCIL_NPR_MEM_WRITE;
-    bool disable_read = mode & PENCIL_NPR_MEM_NOREAD;
-    bool disable_write = mode & PENCIL_NPR_MEM_NOWRITE;
+	prl_init();
 
-    prl_mem mem = prl_mem_lookup_global_ptr(host_ptr, 0);
-    if (mem) {
-        mem->host_readable = (mem->host_readable && !disable_read) || enable_read;
-        mem->host_writable = (mem->host_writable && !disable_write) || enable_write;
-    } else {
-        // This is not a PRL-registered memory yet. Register it now so we can remember its configuration
-        mem = prl_mem_create_empty(0, NULL, NOSCOPINST);
-        prl_mem_init_rwbuf_host(mem, host_ptr, false, true, !disable_read, !disable_write, true, true, loc_host);
-        mem->tag = true;
-    }
+    bool enable_read = remove_flags & prl_mem_host_noread;
+    bool enable_write = remove_flags & prl_mem_host_nowrite;
+    bool disable_read = add_flags & prl_mem_host_noread;
+    bool disable_write = add_flags & prl_mem_host_noread;
+
+	mem->host_readable = (mem->host_readable && !disable_read) || enable_read;
+	mem->host_writable = (mem->host_writable && !disable_write) || enable_write;
 
     if (mem->host_readable || mem->host_writable) {
         ensure_host_allocated(NOSCOPINST, mem);
@@ -3251,6 +3248,42 @@ void __prl_npr_mem_tag(void *host_ptr, enum npr_mem_tags mode) {
 
     assert(is_valid_loc(mem));
 }
+
+void prl_npr_mem_tag(void *host_ptr, enum npr_mem_tags mode) {
+    bool enable_read = mode & PENCIL_NPR_MEM_READ;
+    bool enable_write = mode & PENCIL_NPR_MEM_WRITE;
+    bool disable_read = mode & PENCIL_NPR_MEM_NOREAD;
+    bool disable_write = mode & PENCIL_NPR_MEM_NOWRITE;
+
+	prl_init();
+
+	prl_mem mem = prl_mem_lookup_global_ptr(host_ptr, 0);
+	if (mem) {
+		prl_mem_change_flags(mem, (disable_read ? prl_mem_host_noread : 0) | (disable_write ? prl_mem_host_nowrite : 0), (enable_read ? prl_mem_host_noread : 0) | (enable_write ? prl_mem_host_nowrite : 0) );
+	} else {
+		// This is not a PRL-registered memory yet. Register it now so we can remember its configuration.
+        mem = prl_mem_create_empty(0, NULL, NOSCOPINST);
+        prl_mem_init_rwbuf_host(mem, host_ptr, false, true, !disable_read, !disable_write, true, true, loc_host);
+        mem->tag = true;
+	}
+
+	assert(is_valid_loc(mem));
+}
+
 void __pencil_npr_mem_tag(void *location, enum npr_mem_tags mode) {
-    __prl_npr_mem_tag(location, mode);
+    prl_npr_mem_tag(location, mode);
+}
+
+/* Legacy name */
+void __prl_npr_mem_tag(void *location, enum npr_mem_tags mode) {
+    prl_npr_mem_tag(location, mode);
+}
+
+
+void prl_mem_add_flags(prl_mem mem, enum prl_mem_flags add_flags) {
+    prl_mem_change_flags(mem, add_flags, 0);
+}
+
+void prl_mem_remove_flags(prl_mem mem, enum prl_mem_flags remove_flags) {
+    prl_mem_change_flags(mem, 0, remove_flags);
 }
