@@ -25,7 +25,7 @@ static const char *PRL_PREFIX = "PRL_PREFIX";
 static const char *PRL_PROFILING_PREFIX = "PRL_PROFILING_PREFIX";
 static const char *PRL_PROF_CPU = "PRL_PROF_CPU";
 static const char *PRL_PROF_GPU = "PRL_PROF_GPU";
-static const char *PRL_PROF_ALL="PRL_PROF_ALL";
+static const char *PRL_PROF_ALL = "PRL_PROF_ALL";
 static const char *PRL_DUMP="PRL_DUMP";
 static const char *PRL_DUMP_CPU="PRL_DUMP_CPU";
 static const char *PRL_DUMP_GPU="PRL_DUMP_GPU";
@@ -96,7 +96,7 @@ static struct prl_global_config global_config = {
 
 enum prl_stat_entry {
     stat_cpu_global, // CPU time since prl_init()
-    stat_cpu_bench,  // CPU time between prl_prof_start() and prl_prof_stop()
+    stat_cpu_bench,  // CPU time between prl_perf_start() and prl_perf_stop()
     stat_cpu_scop,   // CPU time spent in scops
 
     // system calls
@@ -1953,7 +1953,7 @@ static void dump_entry(const char *name, double median, double relstddev) {
 }
 #endif
 
-void prl_prof_dump() {
+void prl_perf_dump() {
     size_t n = global_state.bench_stats_size;
     int intn = n;
 
@@ -3048,7 +3048,7 @@ void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims,
     }
 }
 
-void prl_prof_reset() {
+void prl_perf_reset() {
     prl_init();
 
     free_checked(NOSCOPINST, global_state.bench_stats);
@@ -3056,12 +3056,12 @@ void prl_prof_reset() {
     global_state.bench_stats_size = 0;
 }
 
-void prl_prof_start() {
+void prl_perf_start() {
     global_state.prev_global_stat = global_state.global_stat;
     global_state.bench_start = timestamp();
 }
 
-void prl_prof_stop() {
+void prl_perf_stop() {
     prl_time_t bench_stop = timestamp();
     struct prl_stat diff_stat;
     for (int i = 0; i < STAT_ENTRIES; i += 1) {
@@ -3076,44 +3076,36 @@ void prl_prof_stop() {
     bench_push_back(&diff_stat);
 }
 
-void prl_prof_benchmark(timing_callback bench_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user) {
+void prl_perf_benchmark(timing_callback bench_func, timing_callback init_callback, timing_callback finit_callback, void *user) {
     assert(bench_func);
-
-    //FIXME: What is supposed to happen if prl is already initialized?
-    assert(!prl_initialized);
-    //TODO: Pass some other way, independent of user settings ,like by argument
-    global_config.cpu_profiling = true;
-    global_config.gpu_profiling = true;
-
     prl_init();
-    assert(any_profiling());
 
     int warmups = global_state.config.timing_warmups;
     assert(warmups >= 0);
     int runs = global_state.config.timing_runs;
     assert(runs >= 1);
 
-    prl_prof_reset();
+    prl_perf_reset();
 
     for (int i = 0; i < warmups; i += 1) {
         if (init_callback)
-            (*init_callback)(init_user);
+            (*init_callback)(user);
         (*bench_func)(user);
         if (finit_callback)
-            (*finit_callback)(finit_user);
+            (*finit_callback)(user);
     }
 
     for (int i = 0; i < runs; i += 1) {
         if (init_callback)
-            (*init_callback)(init_user);
-        prl_prof_start();
+            (*init_callback)(user);
+        prl_perf_start();
         (*bench_func)(user);
-        prl_prof_stop();
+        prl_perf_stop();
         if (finit_callback)
-            (*finit_callback)(finit_user);
+            (*finit_callback)(user);
     }
 
-    prl_prof_dump();
+    prl_perf_dump();
 }
 
 void prl_mem_free(prl_mem mem) {
@@ -3125,6 +3117,7 @@ void *prl_alloc(size_t size) {
 
     prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
     prl_mem_init_rwbuf_none(mem, true, true, true, true);
+    mem->loc = loc_host;
     return get_exposed_host(NOSCOPINST, mem);
 }
 
@@ -3133,6 +3126,8 @@ prl_mem prl_mem_alloc(size_t size, enum prl_mem_flags flags) {
 
     prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
     prl_mem_init_rwbuf_none(mem, !(flags & prl_mem_host_noread), !(flags & prl_mem_host_nowrite), !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite));
+    if (!(flags & prl_mem_host_nowrite))
+    	mem->loc = loc_host;
     return mem;
 }
 

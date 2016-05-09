@@ -5,13 +5,13 @@
 extern "C" {
 #endif
 
-void prl_prof_reset();
-void prl_prof_start();
-void prl_prof_stop();
-void prl_prof_dump();
+void prl_perf_reset();
+void prl_perf_start();
+void prl_perf_stop();
+void prl_perf_dump();
 
 typedef void (*timing_callback)(void *user);
-void prl_prof_benchmark(timing_callback benched_func, void *user, timing_callback init_callback, void *init_user, timing_callback finit_callback, void *finit_user);
+void prl_perf_benchmark(timing_callback benched_func, timing_callback init_callback, timing_callback finit_callback, void *user);
 
 #if defined(__cplusplus)
 }
