@@ -2892,11 +2892,6 @@ void prl_scop_host_to_device(prl_scop_instance scopinst, prl_mem mem) {
     assert(mem);
     assert(is_valid_loc(mem));
 
-    if (!mem->host_writable || !mem->transfer_to_device) {
-        // This mem is configured to not transfer the data
-        return;
-    }
-
     if (is_mem_available_on_dev(mem)) {
         // Nothing to do
         return;
