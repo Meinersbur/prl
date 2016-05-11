@@ -171,7 +171,7 @@ enum prl_stat_entry {
 };
 #define STAT_ENTRIES (stat_gpu_other + 1)
 #define STAT_CPU_FIRST stat_cpu_scop
-#define STAT_CPU_LAST stat_cpu_clGetDeviceInfo
+#define STAT_CPU_LAST stat_cpu_clBuildProgram
 #define STAT_GPU_FIRST stat_gpu_total
 #define STAT_GPU_LAST stat_gpu_other
 
