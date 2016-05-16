@@ -1,20 +1,23 @@
+#include "prl.h"
+#include "prl_pencil.h"
+
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #if defined(__APPLE__)
 #include <OpenCL/opencl.h>
 #else
 #include <CL/opencl.h>
 #endif
 
+#include <assert.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <math.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <inttypes.h>
 #include <time.h>
-#include <math.h>
-#include <limits.h>
-#include "prl_pencil.h"
-#include "prl.h"
 
 static const char *PRL_TARGET_DEVICE = "PRL_TARGET_DEVICE";
 static const char *PRL_BLOCKING = "PRL_BLOCKING";
@@ -31,6 +34,8 @@ static const char *PRL_DUMP_CPU="PRL_DUMP_CPU";
 static const char *PRL_DUMP_GPU="PRL_DUMP_GPU";
 static const char *PRL_DUMP_ALL="PRL_DUMP_ALL";
 static const char *PRL_TRACE_GPU = "PRL_TRACE_GPU"; // Print duration of every queue item
+static const char *PRL_TRACE_CPU = "PRL_TRACE_CPU";
+static const char *PRL_TRACE_ALL = "PRL_TRACE_ALL";
 
 static const char *PRL_PROF_PREFIX = "PRL_PROF_PREFIX";
 static const char *PRL_PROF_RUNS = "PRL_PROF_RUNS";
@@ -72,6 +77,7 @@ struct prl_global_config {
     bool cpu_profiling;
     bool gpu_profiling;
     bool gpu_detailed_profiling;
+    bool cpu_detailed_profiling;
     bool dump_on_release;
     const char *profiling_prefix;
 
@@ -310,25 +316,6 @@ typedef int prl_count_list[STAT_ENTRIES];
 struct prl_stat {
     prl_stat_list entries;
     prl_count_list counts;
-
-#if 0
-	prl_time_t cpu_malloc_time;
-	prl_time_t cpu_realloc_time;
-	prl_time_t cpu_free_time;
-	prl_time_t cpu_clCreateContext_time;
-	prl_time_t cpu_clGetPlatformIDs_time;
-	prl_time_t cpu_clCreateCommandQueue_time;
-	prl_time_t cpu_clGetDeviceID_time;
-
-	prl_time_t cpu_scop_time;
-
-	prl_time_t gpu_working ;
-	prl_time_t gpu_idle;
-
-	prl_time_t gpu_transfer_to_device;
-	prl_time_t gpu_compute;
-	prl_time_t gpu_transfer_to_host;
-#endif
 };
 
 static int cmp_time(const void *lhs_arg, const void *rhs_arg) {
@@ -680,20 +667,56 @@ static const char *opencl_getErrorString(cl_int error) {
 
 //static void opencl_error(cl_int err, const char *call) __attribute__((noreturn)) ;
 
-static void opencl_error(cl_int err, const char *call) {
+static void opencl_error(cl_int err, enum prl_stat_entry call) {
     //TODO: Print chosen driver
     //TODO: Allow customization on what happens on error
-    const char *desc = opencl_getErrorString(err);
-    if (desc) {
-        fprintf(stderr, "%s\nOpenCL error %s\n", call, desc);
+
+    const char *callstr = statname[call];
+    if (err == CL_SUCCESS) {
+        fprintf(stderr, "OpenCL error in %s\n", callstr);
     } else {
-        fprintf(stderr, "%s\nOpenCL error %" PRIi32 "\n", call, err);
+        const char *desc = opencl_getErrorString(err);
+        if (desc)
+            fprintf(stderr, "OpenCL error in %s: %s\n", callstr, desc);
+        else
+            fprintf(stderr, "OpenCL error in %s: %" PRIi32 "\n", callstr, err);
     }
+
     exit(1);
 }
 
+static void print_sizet_array(size_t n, const size_t *elts) {
+    if (!elts) {
+        printf("NULL");
+        return;
+    }
+
+    printf("{ ");
+    for (int i = 0; i < n; i += 1) {
+        if (i > 0)
+            printf(", ");
+        printf("%zu", elts[i]);
+    }
+    printf(" }");
+}
+
+static void print_ptr_array(size_t n, const void *const *elts) {
+    if (!elts) {
+        printf("(nil)");
+        return;
+    }
+
+    printf("{ ");
+    for (int i = 0; i < n; i += 1) {
+        if (i > 0)
+            printf(", ");
+        printf("%p", elts[i]);
+    }
+    printf(" }");
+}
+
 static void __ocl_report_error(const char *errinfo, const void *private_info, size_t cb, void *user_data) {
-    fprintf(stderr, "OCL error: %s\n", errinfo);
+    fprintf(stderr, "OpenCL error: %s\n", errinfo);
     exit(1);
 }
 
@@ -715,46 +738,118 @@ static void add_time(prl_scop_instance scopinst, enum prl_stat_entry entry, prl_
     global_state.global_stat.counts[entry] += 1;
 }
 
+static bool cpu_tracing() {
+    return global_state.config.cpu_detailed_profiling;
+}
+
+static void trace_result(prl_scop_instance scopinst, enum prl_stat_entry entry, prl_time_t duration, cl_int err) {
+    if (global_state.config.cpu_profiling)
+        add_time(scopinst, entry, duration);
+
+    if (!cpu_tracing())
+        return;
+
+    if (err != CL_SUCCESS) {
+        const char *errstr = opencl_getErrorString(err);
+        //TODO: Color on error and terminal output
+        printf(" -> %s", errstr);
+    }
+
+    if (global_state.config.cpu_profiling)
+        printf(": %fms", duration * 0.000001d);
+
+    puts("");
+}
+
+static uint32_t min_uint32(uint32_t x, uint32_t y) {
+    return (x <= y) ? x : y;
+}
+
 static void clReleaseMemObject_checked(prl_scop_instance scopinst, cl_mem memobj) {
     assert(memobj);
+
+    if (cpu_tracing()) {
+        printf("clReleaseMemObject(memobj=%p)", memobj);
+        fflush(stdout);
+    }
 
     prl_time_t start = timestamp();
     cl_int err = clReleaseMemObject(memobj);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clReleaseMemObject, stop - start);
+
+    trace_result(scopinst, stat_cpu_clReleaseMemObject, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clReleaseMemObject");
+        opencl_error(err, stat_cpu_clReleaseMemObject);
 }
 
 static cl_command_queue clCreateCommandQueue_checked(prl_scop_instance scopinst, cl_context context, cl_device_id device, cl_command_queue_properties properties) {
+    assert(context);
     cl_int err = CL_INT_MIN;
+
+    if (cpu_tracing()) {
+        printf("clCreateCommandQueue(context=%p, device=%p, properties=%" PRIx64 ")", context, device, properties);
+        fflush(stdout);
+    }
 
     prl_time_t start = timestamp();
     cl_command_queue result = clCreateCommandQueue(context, device, properties, &err);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clCreateCommandQueue, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        printf(" -> %p", result);
+    trace_result(scopinst, stat_cpu_clCreateCommandQueue, stop - start, err);
 
     if (err != CL_SUCCESS || !result)
-        opencl_error(err, "clCreateCommandQueue");
+        opencl_error(err, stat_cpu_clCreateCommandQueue);
     return result;
 }
 
 static void clGetPlatformIDs_checked(prl_scop_instance scopinst, cl_uint num_entries, cl_platform_id *platforms, cl_uint *num_platforms) {
+    cl_uint num_platforms_substitute = 0;
+
+    if (cpu_tracing()) {
+        printf("clGetPlatformIDs(num_entries=%" PRIu32 ")", num_entries);
+        fflush(stdout);
+        if (!num_platforms)
+            num_platforms = &num_platforms_substitute;
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clGetPlatformIDs(num_entries, platforms, num_platforms);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clGetPlatformIDs, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS) {
+        printf(" -> platforms=");
+        print_ptr_array(min_uint32(num_entries, *num_platforms), (const void **)platforms);
+        printf(" num_platforms=%" PRIu32, *num_platforms);
+    }
+    trace_result(scopinst, stat_cpu_clGetPlatformIDs, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetPlatformIDs");
+        opencl_error(err, stat_cpu_clGetPlatformIDs);
 }
 
 static void clGetDeviceIDs_checked(prl_scop_instance scopinst, cl_platform_id platform, cl_device_type device_type, cl_uint num_entries, cl_device_id *devices, cl_uint *num_devices) {
+    cl_uint num_devices_substitute = 0;
+
+    if (cpu_tracing()) {
+        printf("clGetDeviceIDs(platform=%p, device_type=%" PRIx64 ", num_entries=%" PRIu32 ")", platform, device_type, num_entries);
+        fflush(stdout);
+        if (!num_devices)
+            num_devices = &num_devices_substitute;
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clGetDeviceIDs(platform, device_type, num_entries, devices, num_devices);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clGetDeviceIDs, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS) {
+        printf(" -> devices=");
+        print_ptr_array(min_uint32(num_entries, *num_devices), (const void **)devices);
+        printf(" num_devices=%" PRIu32, *num_devices);
+    }
+    trace_result(scopinst, stat_cpu_clGetDeviceIDs, stop - start, err);
 
     if (err == CL_DEVICE_NOT_FOUND /*|| err==CL_INVALID_DEVICE_TYPE*/) {
         if (num_devices)
@@ -763,7 +858,7 @@ static void clGetDeviceIDs_checked(prl_scop_instance scopinst, cl_platform_id pl
     }
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetDeviceIDs");
+        opencl_error(err, stat_cpu_clGetDeviceIDs);
 }
 
 static cl_context clCreateContext_checked(prl_scop_instance scopinst, const cl_context_properties *properties,
@@ -773,13 +868,23 @@ static cl_context clCreateContext_checked(prl_scop_instance scopinst, const cl_c
                                           void *user_data) {
     cl_int err = CL_INT_MIN;
 
+    if (cpu_tracing()) {
+        printf("clCreateContext(properties=?, num_devices=%" PRIu32 ", devices=", num_devices);
+        print_ptr_array(num_devices, (const void **)devices);
+        printf(", pfn_notify=%p, user_data=%p)", pfn_notify, user_data);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_context result = clCreateContext(properties, num_devices, devices, pfn_notify, user_data, &err);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clCreateContext, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        printf(" -> %p", result);
+    trace_result(scopinst, stat_cpu_clCreateContext, stop - start, err);
 
     if (err != CL_SUCCESS || !result)
-        opencl_error(err, "clCreateContext");
+        opencl_error(err, stat_cpu_clCreateContext);
     return result;
 }
 
@@ -792,13 +897,31 @@ static void clEnqueueWriteBuffer_checked(prl_scop_instance scopinst, cl_command_
                                          cl_uint num_events_in_wait_list,
                                          const cl_event *event_wait_list,
                                          cl_event *event) {
+    assert(command_queue);
+    assert(buffer);
+
+    if (cpu_tracing()) {
+        printf("clEnqueueWriteBuffer(command_queue=%p, buffer=%p, blocking_write=%" PRIu32 ", offset=%zu, size=%zu, ptr=%p, num_events_in_wait_list=%" PRIu32 ", event_wait_list=",
+               command_queue, buffer, blocking_write, offset, size, ptr, num_events_in_wait_list);
+        print_ptr_array(num_events_in_wait_list, (const void **)event_wait_list);
+        printf(")");
+        fflush(stdout);
+    }
+
+    if (event)
+        *event = NULL;
+
     prl_time_t start = timestamp();
     cl_int err = clEnqueueWriteBuffer(command_queue, buffer, blocking_write, offset, size, ptr, num_events_in_wait_list, event_wait_list, event);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clEnqueueWriteBuffer, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        if (event)
+            printf(" -> event=%p", *event);
+    trace_result(scopinst, stat_cpu_clEnqueueWriteBuffer, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clEnqueueWriteBuffer");
+        opencl_error(err, stat_cpu_clEnqueueWriteBuffer);
 }
 
 static void clEnqueueReadBuffer_checked(prl_scop_instance scopinst, cl_command_queue command_queue,
@@ -810,13 +933,31 @@ static void clEnqueueReadBuffer_checked(prl_scop_instance scopinst, cl_command_q
                                         cl_uint num_events_in_wait_list,
                                         const cl_event *event_wait_list,
                                         cl_event *event) {
+    assert(command_queue);
+    assert(buffer);
+
+    if (cpu_tracing()) {
+        printf("clEnqueueReadBuffer(command_queue=%p, buffer=%p, blocking_read=%" PRIu32 ", offset=%zu, size=%zu, ptr=%p, num_events_in_wait_list=%" PRIu32 ", event_wait_list=",
+               command_queue, buffer, blocking_read, offset, size, ptr, num_events_in_wait_list);
+        print_ptr_array(num_events_in_wait_list, (const void **)event_wait_list);
+        printf(")");
+        fflush(stdout);
+    }
+
+    if (event)
+        *event = NULL;
+
     prl_time_t start = timestamp();
     cl_int err = clEnqueueReadBuffer(command_queue, buffer, blocking_read, offset, size, ptr, num_events_in_wait_list, event_wait_list, event);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clEnqueueReadBuffer, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        if (event)
+            printf(" -> event=%p", *event);
+    trace_result(scopinst, stat_cpu_clEnqueueReadBuffer, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clEnqueueReadBuffer");
+        opencl_error(err, stat_cpu_clEnqueueReadBuffer);
 }
 
 static void clEnqueueNDRangeKernel_checked(prl_scop_instance scopinst, cl_command_queue command_queue,
@@ -828,13 +969,36 @@ static void clEnqueueNDRangeKernel_checked(prl_scop_instance scopinst, cl_comman
                                            cl_uint num_events_in_wait_list,
                                            const cl_event *event_wait_list,
                                            cl_event *event) {
+    assert(command_queue);
+    assert(kernel);
+
+    if (cpu_tracing()) {
+        printf("clEnqueueNDRangeKernel(command_queue=%p, kernel=%p, work_dim=%" PRIu32 ", global_work_offset=", command_queue, kernel, work_dim);
+        print_sizet_array(work_dim, global_work_offset);
+        printf(", global_work_size=");
+        print_sizet_array(work_dim, global_work_size);
+        printf(", local_work_size=");
+        print_sizet_array(work_dim, local_work_size);
+        printf(", num_events_in_wait_list=%" PRIu32 ", event_wait_list=", num_events_in_wait_list);
+        print_ptr_array(num_events_in_wait_list, (const void **)event_wait_list);
+        printf(")");
+        fflush(stdout);
+    }
+
+    if (event)
+        *event = NULL;
+
     prl_time_t start = timestamp();
     cl_int err = clEnqueueNDRangeKernel(command_queue, kernel, work_dim, global_work_offset, global_work_size, local_work_size, num_events_in_wait_list, event_wait_list, event);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clEnqueueNDRangeKernel, stop - start);
 
-    if (err)
-        opencl_error(err, "clEnqueueNDRangeKernel");
+    if (cpu_tracing() && err == CL_SUCCESS)
+        if (event)
+            printf(" -> event=%p", *event);
+    trace_result(scopinst, stat_cpu_clEnqueueNDRangeKernel, stop - start, err);
+
+    if (err != CL_SUCCESS)
+        opencl_error(err, stat_cpu_clEnqueueNDRangeKernel);
 }
 
 static void *clEnqueueMapBuffer_checked(prl_scop_instance scopinst, cl_command_queue command_queue,
@@ -846,52 +1010,92 @@ static void *clEnqueueMapBuffer_checked(prl_scop_instance scopinst, cl_command_q
                                         cl_uint num_events_in_wait_list,
                                         const cl_event *event_wait_list,
                                         cl_event *event) {
+    assert(command_queue);
+    assert(buffer);
     cl_int err = CL_INT_MIN;
+
+    if (cpu_tracing()) {
+        printf("clEnqueueMapBuffer(command_queue=%p, buffer=%p, blocking_map=%" PRIu32 ", map_flags=%" PRIu64 ", offset=%zu, size=%zu, num_events_in_wait_list=%" PRIu32 ", event_wait_list=",
+               command_queue, buffer, blocking_map, map_flags, offset, size, num_events_in_wait_list);
+        print_ptr_array(num_events_in_wait_list, (const void **)event_wait_list);
+        printf(")");
+        fflush(stdout);
+    }
+
+    if (event)
+        *event = NULL;
 
     prl_time_t start = timestamp();
     void *result = clEnqueueMapBuffer(command_queue, buffer, blocking_map, map_flags, offset, size, num_events_in_wait_list, event_wait_list, event, &err);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clEnqueueMapBuffer, stop - start);
 
-    if (err != CL_SUCCESS)
-        opencl_error(err, "clEnqueueMapBuffer");
+    if (cpu_tracing() && err == CL_SUCCESS) {
+        printf(" -> %p", result);
+        if (event)
+            printf(" event=%p", *event);
+    }
+    trace_result(scopinst, stat_cpu_clEnqueueMapBuffer, stop - start, err);
+
+    if (err != CL_SUCCESS || !result)
+        opencl_error(err, stat_cpu_clEnqueueMapBuffer);
     return result;
 }
 
 static void clFinish_checked(prl_scop_instance scopinst, cl_command_queue command_queue) {
     assert(command_queue);
 
+    if (cpu_tracing()) {
+        printf("clFinish(command_queue=%p)", command_queue);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clFinish(command_queue);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clFinish, stop - start);
+
+    trace_result(scopinst, stat_cpu_clFinish, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clFinish");
+        opencl_error(err, stat_cpu_clFinish);
 }
 
 static void clReleaseCommandQueue_checked(prl_scop_instance scopinst, cl_command_queue command_queue) {
     assert(command_queue);
 
+    if (cpu_tracing()) {
+        printf("clReleaseCommandQueue(command_queue=%p)", command_queue);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clReleaseCommandQueue(command_queue);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clReleaseCommandQueue, stop - start);
+
+    trace_result(scopinst, stat_cpu_clReleaseCommandQueue, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clReleaseCommandQueue");
+        opencl_error(err, stat_cpu_clReleaseCommandQueue);
 }
 
 static cl_mem clCreateBuffer_checked(prl_scop_instance scopinst, cl_context context, cl_mem_flags flags, size_t size, void *host_ptr) {
+    assert(context);
     cl_int err = CL_INT_MIN;
+
+    if (cpu_tracing()) {
+        printf("clCreateBuffer(context=%p, flags=%" PRIu64 ", size=%zu, host_ptr=%p)", context, flags, size, host_ptr);
+        fflush(stdout);
+    }
 
     prl_time_t start = timestamp();
     cl_mem result = clCreateBuffer(context, flags, size, host_ptr, &err);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clCreateBuffer, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        printf(" -> %p", result);
+    trace_result(scopinst, stat_cpu_clCreateBuffer, stop - start, err);
 
     if (err || !result)
-        opencl_error(err, "clCreateBuffer");
+        opencl_error(err, stat_cpu_clCreateBuffer);
     return result;
 }
 
@@ -905,42 +1109,69 @@ static void clEnqueueUnmapMemObject_checked(prl_scop_instance scopinst, cl_comma
     assert(memobj);
     assert(mapped_ptr);
     assert(num_events_in_wait_list == 0 || event_wait_list);
+
+    if (cpu_tracing()) {
+        printf("clEnqueueUnmapMemObject(command_queue=%p, memobj=%p, mapped_ptr=%p, num_events_in_wait_list=%" PRIu32 ", event_wait_list=",
+               command_queue, memobj, mapped_ptr, num_events_in_wait_list);
+        print_ptr_array(num_events_in_wait_list, (const void **)event_wait_list);
+        printf(")");
+        fflush(stdout);
+    }
+
     if (event)
         *event = NULL;
 
     prl_time_t start = timestamp();
     cl_int err = clEnqueueUnmapMemObject(command_queue, memobj, mapped_ptr, num_events_in_wait_list, event_wait_list, event);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clEnqueueUnmapMemObject, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        if (event)
+            printf(" -> event=%p", *event);
+    trace_result(scopinst, stat_cpu_clEnqueueUnmapMemObject, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clEnqueueUnmapMemObject");
+        opencl_error(err, stat_cpu_clEnqueueUnmapMemObject);
     assert(!event || *event);
 }
 
 static void clReleaseEvent_checked(prl_scop_instance scopinst, cl_event event) {
     assert(event);
 
+    if (cpu_tracing()) {
+        printf("clReleaseEvent(event=%p)", event);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clReleaseEvent(event);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clReleaseEvent, stop - start);
+
+    trace_result(scopinst, stat_cpu_clReleaseEvent, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clReleaseEvent");
+        opencl_error(err, stat_cpu_clReleaseEvent);
 }
 
 static void clWaitForEvents_checked(prl_scop_instance scopinst, cl_uint num_events, const cl_event *event_list) {
     assert(num_events >= 1);
     assert(event_list);
 
+    if (cpu_tracing()) {
+        printf("clWaitForEvents(num_events=%" PRIu32 ", event_list=", num_events);
+        print_ptr_array(num_events, (const void *const *)event_list);
+        printf(")");
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clWaitForEvents(num_events, event_list);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clWaitForEvents, stop - start);
+
+    trace_result(scopinst, stat_cpu_clWaitForEvents, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clWaitForEvents");
+        opencl_error(err, stat_cpu_clWaitForEvents);
 }
 
 static void clWaitForEvent_checked(prl_scop_instance scopinst, cl_event event) {
@@ -955,13 +1186,23 @@ static void clGetEventProfilingInfo_checked(prl_scop_instance scopinst, cl_event
                                             size_t *param_value_size_ret) {
     assert(event);
 
+    if (cpu_tracing()) {
+        printf("clGetEventProfilingInfo(event=%p, param_name=%" PRIu32 ", param_value_size=%zu)",
+               event, param_name, param_value_size);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clGetEventProfilingInfo(event, param_name, param_value_size, param_value, param_value_size_ret);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clGetEventProfilingInfo, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS) {
+        printf(" -> ?");
+    }
+    trace_result(scopinst, stat_cpu_clGetEventProfilingInfo, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetEventProfilingInfo");
+        opencl_error(err, stat_cpu_clGetEventProfilingInfo);
 }
 
 static void clGetEventInfo_checked(prl_scop_instance scopinst, cl_event event,
@@ -972,13 +1213,22 @@ static void clGetEventInfo_checked(prl_scop_instance scopinst, cl_event event,
     assert(event);
     assert(param_value);
 
+    if (cpu_tracing()) {
+        printf("clGetEventInfo(event=%p, param_name=%" PRIu32 ", param_value_size=%zu)", event, param_name, param_value_size);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clGetEventInfo(event, param_name, param_value_size, param_value, param_value_size_ret);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clGetEventInfo, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS) {
+        printf(" -> ?");
+    }
+    trace_result(scopinst, stat_cpu_clGetEventInfo, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetEventInfo");
+        opencl_error(err, stat_cpu_clGetEventInfo);
 }
 
 static void clGetPlatformInfo_checked(prl_scop_instance scopinst, cl_platform_id platform,
@@ -986,13 +1236,23 @@ static void clGetPlatformInfo_checked(prl_scop_instance scopinst, cl_platform_id
                                       size_t param_value_size,
                                       void *param_value,
                                       size_t *param_value_size_ret) {
+
+    if (cpu_tracing()) {
+        printf("clGetPlatformInfo(platform=%p, param_name=%" PRIu32 ", param_value_size=%zu)", platform, param_name, param_value_size);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clGetPlatformInfo(platform, param_name, param_value_size, param_value, param_value_size_ret);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clGetPlatformInfo, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS) {
+        printf(" -> ?");
+    }
+    trace_result(scopinst, stat_cpu_clGetPlatformInfo, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetPlatformInfo");
+        opencl_error(err, stat_cpu_clGetPlatformInfo);
 }
 
 static cl_kernel clCreateKernel_checked(prl_scop_instance scopinst, cl_program program,
@@ -1000,15 +1260,22 @@ static cl_kernel clCreateKernel_checked(prl_scop_instance scopinst, cl_program p
     assert(program);
     assert(kernel_name);
 
-    cl_int err = CL_INT_MIN;
+    if (cpu_tracing()) {
+        printf("clCreateKernel(program=%p, kernel_name=%s)", program, kernel_name);
+        fflush(stdout);
+    }
 
+    cl_int err = CL_INT_MIN;
     prl_time_t start = timestamp();
     cl_kernel result = clCreateKernel(program, kernel_name, &err);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clCreateKernel, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        printf(" -> %p", result);
+    trace_result(scopinst, stat_cpu_clCreateKernel, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clCreateKernel");
+        opencl_error(err, stat_cpu_clCreateKernel);
     return result;
 }
 
@@ -1020,25 +1287,37 @@ static void clSetKernelArg_checked(prl_scop_instance scopinst, cl_kernel kernel,
     assert(arg_size > 0);
     assert(arg_value);
 
+    if (cpu_tracing()) {
+        printf("clSetKernelArg(kernel=%p, arg_index=%" PRIu32 ", arg_size=%zu, arg_value=?)", kernel, arg_index, arg_size);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clSetKernelArg(kernel, arg_index, arg_size, arg_value);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clSetKernelArg, stop - start);
+
+    trace_result(scopinst, stat_cpu_clSetKernelArg, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clSetKernelArg");
+        opencl_error(err, stat_cpu_clSetKernelArg);
 }
 
 static void clReleaseKernel_checked(prl_scop_instance scopinst, cl_kernel kernel) {
     assert(kernel);
 
+    if (cpu_tracing()) {
+        printf("clReleaseKernel(kernel=%p)", kernel);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clReleaseKernel(kernel);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clReleaseKernel, stop - start);
+
+    trace_result(scopinst, stat_cpu_clReleaseKernel, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clReleaseKernel");
+        opencl_error(err, stat_cpu_clReleaseKernel);
 }
 
 static void clGetDeviceInfo_checked(prl_scop_instance scopinst, cl_device_id device,
@@ -1046,13 +1325,22 @@ static void clGetDeviceInfo_checked(prl_scop_instance scopinst, cl_device_id dev
                                     size_t param_value_size,
                                     void *param_value,
                                     size_t *param_value_size_ret) {
+
+    if (cpu_tracing()) {
+        printf("clGetDeviceInfo(device=%p, param_name=%" PRIu32 ", param_value_size=%zu)", device, param_name, param_value_size);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clGetDeviceInfo(device, param_name, param_value_size, param_value, param_value_size_ret);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clGetDeviceInfo, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        printf(" -> ?");
+    trace_result(scopinst, stat_cpu_clGetDeviceInfo, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetDeviceInfo");
+        opencl_error(err, stat_cpu_clGetDeviceInfo);
 }
 
 static void clGetMemObjectInfo_checked(prl_scop_instance scopinst, cl_mem memobj,
@@ -1062,35 +1350,63 @@ static void clGetMemObjectInfo_checked(prl_scop_instance scopinst, cl_mem memobj
                                          size_t *param_value_size_ret) {
     assert(memobj);
 
+    if (cpu_tracing()) {
+        printf("clGetMemObjectInfo(memobj=%p, param_name=%" PRIu32 ", param_value_size=%zu)", memobj, param_name, param_value_size);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clGetMemObjectInfo(memobj, param_name, param_value_size, param_value, param_value_size_ret);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clGetMemObjectInfo, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        printf(" -> ?");
+    trace_result(scopinst, stat_cpu_clGetMemObjectInfo, stop - start, err);
+
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetMemObjectInfo");
+        opencl_error(err, stat_cpu_clGetMemObjectInfo);
 }
 
 static cl_program clCreateProgramWithSource_checked(prl_scop_instance scopinst, cl_context context, cl_uint count, const char **strings, const size_t *lengths) {
-    cl_int err = CL_INT_MIN;
+    assert(context);
 
+    if (cpu_tracing()) {
+        printf("clCreateProgramWithSource(context=%p, count=%" PRIu32 ", strings=?, lengths=?)", context, count);
+        fflush(stdout);
+    }
+
+    cl_int err = CL_INT_MIN;
     prl_time_t start = timestamp();
     cl_program result = clCreateProgramWithSource(context, count, strings, lengths, &err);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clCreateProgramWithSource, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        printf(" -> %p", result);
+    trace_result(scopinst, stat_cpu_clCreateProgramWithSource, stop - start, err);
 
     if (err != CL_SUCCESS || !result)
-        opencl_error(err, "clCreateProgramWithSource");
+        opencl_error(err, stat_cpu_clCreateProgramWithSource);
     return result;
 }
 
 static void clGetProgramBuildInfo_checked(prl_scop_instance scopinst, cl_program program, cl_device_id device, cl_program_build_info param_name, size_t param_value_size, void *param_value, size_t *param_value_size_ret) {
+    assert(program);
+
+    if (cpu_tracing()) {
+        printf("clGetProgramBuildInfo(program=%p, device=%p, param_name=%" PRIu32 ", param_value_size=%zu)", program, device, param_name, param_value_size);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clGetProgramBuildInfo(program, device, param_name, param_value_size, param_value, param_value_size_ret);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clGetProgramBuildInfo, stop - start);
+
+    if (cpu_tracing() && err == CL_SUCCESS)
+        printf(" -> ?");
+    trace_result(scopinst, stat_cpu_clGetProgramBuildInfo, stop - start, err);
 
     if (err != CL_SUCCESS)
-        opencl_error(err, "clGetProgramBuildInfo");
+        opencl_error(err, stat_cpu_clGetProgramBuildInfo);
 }
 
 static bool clBuildProgram_checked(prl_scop_instance scopinst, cl_program program,
@@ -1099,12 +1415,22 @@ static bool clBuildProgram_checked(prl_scop_instance scopinst, cl_program progra
                                    const char *options,
                                    void (*pfn_notify)(cl_program, void *user_data),
                                    void *user_data) {
+    assert(program);
+
+    if (cpu_tracing()) {
+        printf("clBuildProgram(program=%p, num_devices=%" PRIu32 ", device_list=", program, num_devices);
+        print_ptr_array(num_devices, (const void *const *)device_list);
+        printf(", options=%s, pfn_notify=%p, user_data=%p)", options, pfn_notify, user_data);
+        fflush(stdout);
+    }
+
     prl_time_t start = timestamp();
     cl_int err = clBuildProgram(program, num_devices, device_list, options, pfn_notify, user_data);
     prl_time_t stop = timestamp();
-    add_time(scopinst, stat_cpu_clBuildProgram, stop - start);
 
-	return err!=CL_SUCCESS;
+    trace_result(scopinst, stat_cpu_clBuildProgram, stop - start, err);
+
+    return err!=CL_SUCCESS;
 }
 
 static void *malloc_checked(prl_scop_instance scopinst, size_t size) {
@@ -1268,6 +1594,10 @@ static void dump_finished_transfer_event(cl_command_type cmdty, prl_mem mem, prl
         printf("Transfer %s: %fms (%s)\n", dirstr, duration * 0.000001, cmdstr);
 }
 
+static void report_trace(const char *cmdstr, prl_time_t duration) {
+    printf("%s: %fms\n", cmdstr, duration * 0.000001d);
+}
+
 static void dump_finished_event(struct prl_pending_event *pendev, cl_command_type cmdty, prl_time_t duration) {
     switch (pendev->type) {
     case pending_compute:
@@ -1278,7 +1608,7 @@ static void dump_finished_event(struct prl_pending_event *pendev, cl_command_typ
         break;
     case pending_other: {
         const char *cmdstr = statname[clcommand_to_stat_entry(cmdty)];
-        printf("%s: %fms\n", cmdstr, duration * 0.000001d);
+        report_trace(cmdstr, duration);
     } break;
     }
 }
@@ -1878,6 +2208,15 @@ static void env_config(struct prl_global_config *config) {
         bool detailed_gpu_profiling = get_bool(str);
         config->gpu_detailed_profiling = detailed_gpu_profiling;
     }
+    if ((str = getenv(PRL_TRACE_CPU))) {
+        bool trace = get_bool(str);
+        config->cpu_detailed_profiling = trace;
+    }
+    if ((str = getenv(PRL_TRACE_ALL))) {
+        bool trace = get_bool(str);
+        config->gpu_detailed_profiling = trace;
+        config->cpu_detailed_profiling = trace;
+    }
 
     if ((prefix = getenv(PRL_PROFILING_PREFIX))) {
         config->profiling_prefix = prefix;
@@ -2187,6 +2526,18 @@ static void dump_device() {
     free_checked(NOSCOPINST, device_version);
     free_checked(NOSCOPINST, driver_version);
 }
+
+#if 0
+typedef struct {
+	const char *start;
+	const char *end;
+} substr_t;
+static substr_t next_token(const char *start, const char *end) {
+	assert();
+	const char *cur = start;
+	for (;cur < start;)
+}
+#endif
 
 void prl_init() {
     if (prl_initialized)
