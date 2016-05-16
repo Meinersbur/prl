@@ -49,10 +49,10 @@ void prl_scop_init_kernel(prl_scop_instance scop, prl_kernel *kernel, prl_progra
 
 #if __STDC__ >= 199901L
 // C99
-void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims, size_t grid_size[static const restrict grid_dims], int block_dims, size_t block_size[static const restrict block_dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]);
+void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int work_dims, size_t work_size[static const restrict grid_dims], int block_dims, size_t block_size[static const restrict block_dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]);
 #else
 // C89 or C++
-void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims, size_t grid_size[], int block_dims, size_t block_size[], size_t n_args, struct prl_kernel_call_arg args[]);
+void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int work_dims, size_t work_size[], int block_dims, size_t block_size[], size_t n_args, struct prl_kernel_call_arg args[]);
 #endif
 
 // Scenarios to cover:

@@ -3351,16 +3351,16 @@ void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
     assert(is_valid_loc(mem));
 }
 
-void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims, size_t grid_size[static const restrict grid_dims], int block_dims, size_t block_size[static const restrict block_dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]) {
+void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int work_dims, size_t work_size[static const restrict work_dims], int block_dims, size_t block_size[static const restrict block_dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]) {
     assert(scopinst);
     assert(kernel);
-    assert(grid_dims > 0);
-    assert(grid_dims <= 3);
+    assert(work_dims > 0);
+    assert(work_dims <= 3);
     assert(block_dims > 0);
     assert(block_dims <= 3);
-    assert(grid_size);
+    assert(work_size);
     assert(block_size);
-    assert(grid_dims == block_dims);
+    assert(work_dims == block_dims);
 
     for (int i = 0; i < n_args; i += 1) {
         struct prl_kernel_call_arg *arg = &args[i];
@@ -3377,14 +3377,18 @@ void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int grid_dims,
         }
     }
 
-    int dims = (grid_dims < block_dims) ? grid_dims : block_dims;
+    int common_dims = (work_dims < block_dims) ? work_dims : block_dims;
+    int max_dims = (work_dims < block_dims) ? block_dims : work_dims;
+
     size_t work_items[3];
-    for (int i = 0; i < dims; i += 1) {
-        work_items[i] = grid_size[i] * block_size[i];
+    size_t block_items[3];
+    for (int i = 0; i < max_dims; i += 1) {
+        work_items[i] = (i < work_dims) ? work_size[i] : 1;
+        block_items[i] = (i < block_dims) ? block_size[i] : 1;
     }
 
     cl_event event = NULL;
-    clEnqueueNDRangeKernel_checked(scopinst, scopinst->queue, kernel->kernel, dims, NULL, work_items, block_size, 0, NULL,
+    clEnqueueNDRangeKernel_checked(scopinst, scopinst->queue, kernel->kernel, max_dims, NULL, work_items, block_items, 0, NULL,
                                    (need_events() || is_blocking()) ? &event : NULL);
     if (is_blocking()) {
         clWaitForEvent_checked(scopinst, event);
