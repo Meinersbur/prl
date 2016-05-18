@@ -509,10 +509,7 @@ struct prl_scopinst_mem_struct {
 static bool prl_initialized = false;
 static struct prl_global_state global_state;
 
-static prl_time_t timestamp() {
-    if (!global_state.config.cpu_profiling)
-        return 0;
-
+static prl_time_t timestamp_force() {
     struct timespec stamp;
     int err = clock_gettime(CLOCK_MONOTONIC_RAW, &stamp);
     assert(!err);
@@ -520,6 +517,13 @@ static prl_time_t timestamp() {
     result *= 1000000000L;
     result += stamp.tv_nsec;
     return result;
+}
+
+static prl_time_t timestamp() {
+    if (!global_state.config.cpu_profiling)
+        return 0;
+
+	return timestamp_force();
 }
 
 #define NOSCOPINST ((prl_scop_instance)NULL)
@@ -3408,11 +3412,11 @@ void prl_perf_reset() {
 
 void prl_perf_start() {
     global_state.prev_global_stat = global_state.global_stat;
-    global_state.bench_start = timestamp();
+    global_state.bench_start = timestamp_force();
 }
 
 void prl_perf_stop() {
-    prl_time_t bench_stop = timestamp();
+    prl_time_t bench_stop = timestamp_force();
     struct prl_stat diff_stat;
     for (int i = 0; i < STAT_ENTRIES; i += 1) {
         diff_stat.entries[i] = global_state.global_stat.entries[i] - global_state.prev_global_stat.entries[i];
