@@ -3681,16 +3681,11 @@ void prl_mem_kill(prl_mem mem) {
 void prl_mem_fill(prl_mem mem, char fillchar) {
     assert(mem);
 
-    if (mem->host_readable || mem->host_writable) {
-        ensure_host_allocated(NOSCOPINST, mem);
-        memset(mem->host_mem, fillchar, mem->size);
-        mem->loc |= loc_bit_host_is_current;
-    }
-
-    if (mem->dev_readable || mem->dev_writable) {
-        //TODO: Use clEnqueueFillBuffer (OpenCL 1.2) with clEnqueueNDRangeKernel fallback; at the moment we just rely on the data being transfered when used.
-        mem->loc &= ~loc_bit_dev_is_current;
-    }
+    //TODO: Use clEnqueueFillBuffer (OpenCL 1.2) with clEnqueueNDRangeKernel fallback for dev side; at the moment we just rely on the data being transfered when used.
+    ensure_host_allocated(NOSCOPINST, mem);
+    memset(mem->host_mem, fillchar, mem->size);
+    mem->loc |= loc_bit_host_is_current;
+    mem->loc &= ~loc_bit_dev_is_current;
 }
 
 void prl_mem_zero(prl_mem mem) {
@@ -3705,7 +3700,7 @@ prl_mem prl_get_mem(void *ptr) {
     if (!mem)
         return NULL;
 
-    // Should be impossible with size 0 passed to prl_mem_lookup_global_ptr
+    // Should be a tautology with size 0 passed to prl_mem_lookup_global_ptr
     assert(mem->host_mem == ptr);
     return mem;
 }
