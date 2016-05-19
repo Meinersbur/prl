@@ -12,6 +12,7 @@ enum npr_mem_tags {
 };
 
 // Only use on global, allocate-once memory OR prl-allocated memory that is released using prl_free or prl_mem_free; otherwise, this leaks memory as the tag has to be stored somewhere and there is no direct way to free it (only calling prl_free)
+// Note this is deprecated and we are working on a redesign that doesn't leak by design.
 void __pencil_npr_mem_tag(void *location, enum npr_mem_tags mode);
 #endif
 

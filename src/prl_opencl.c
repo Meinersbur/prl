@@ -471,7 +471,7 @@ struct prl_mem_struct {
     prl_scop_instance scopinst; //RENAME: scopinst
                                 //bool is_global;
     size_t size;
-    bool tag; // If this is a tag, it doesn't need to be freed explicitely.
+    bool tag; // If this is a tag, it doesn't need to be freed explicitly.
     char *name;
     enum prl_alloc_type type;
     cl_event transferevent;
@@ -3485,6 +3485,30 @@ prl_mem prl_mem_alloc(size_t size, enum prl_mem_flags flags) {
     return mem;
 }
 
+prl_mem prl_mem_alloc_prezero(size_t size, enum prl_mem_flags flags) {
+    return prl_mem_alloc_prefill(size, '\0', flags);
+}
+
+prl_mem prl_mem_alloc_prefill(size_t size, char fillchar, enum prl_mem_flags flags) {
+    prl_init();
+
+    prl_mem mem = prl_mem_create_empty(size, NULL, NOSCOPINST);
+    prl_mem_init_rwbuf_none(mem, !(flags & prl_mem_host_noread), !(flags & prl_mem_host_nowrite), !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite));
+    prl_mem_fill(mem, fillchar);
+    return mem;
+}
+
+prl_mem prl_mem_alloc_preinit(size_t size, void *data, enum prl_mem_flags flags) {
+    prl_init();
+
+    // TODO: Exploit CL_MEM_COPY_HOST_PTR flag
+    prl_mem mem = prl_mem_alloc(size, flags & ~prl_mem_host_nowrite);
+    ensure_host_allocated(NOSCOPINST, mem);
+    memcpy(mem->host_mem, data, size);
+    prl_mem_add_flags(mem, flags & prl_mem_host_nowrite);
+    return mem;
+}
+
 void prl_free(void *ptr) {
     assert(prl_initialized);
 
@@ -3496,18 +3520,26 @@ void prl_free(void *ptr) {
 }
 
 prl_mem prl_mem_manage_host(size_t size, void *host_ptr, enum prl_mem_flags flags) {
-    prl_init();
     assert(size > 0);
     assert(host_ptr);
+    prl_init();
 
     prl_mem gmem = prl_mem_lookup_global_ptr(host_ptr, size);
-    if (gmem) {
-        // This mem has been tagged before
-        gmem->tag = false;
+    if (gmem && gmem->size > 0) {
+        // Already allocated
+        assert(gmem->size == size);
+        prl_mem_change_flags(gmem, flags, ~flags);
     } else {
-        gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
+        // New device allocation
+        if (gmem) {
+            assert(gmem->size == 0);
+            // This mem has been tagged before.
+            gmem->tag = false;
+        } else {
+            gmem = prl_mem_create_empty(size, NULL, NOSCOPINST);
+        }
+        prl_mem_init_rwbuf_host(gmem, host_ptr, false, true, !(flags & prl_mem_host_noread), !(flags & prl_mem_host_nowrite), !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite), loc_host);
     }
-    prl_mem_init_rwbuf_host(gmem, host_ptr, false, true, !(flags & prl_mem_host_noread), !(flags & prl_mem_host_nowrite), !(flags & prl_mem_dev_noread), !(flags & prl_mem_dev_nowrite), loc_host);
     assert(is_valid_loc(gmem));
     return gmem;
 }
@@ -3633,11 +3665,47 @@ void __prl_npr_mem_tag(void *location, enum npr_mem_tags mode) {
     prl_npr_mem_tag(location, mode);
 }
 
-
 void prl_mem_add_flags(prl_mem mem, enum prl_mem_flags add_flags) {
     prl_mem_change_flags(mem, add_flags, 0);
 }
 
 void prl_mem_remove_flags(prl_mem mem, enum prl_mem_flags remove_flags) {
     prl_mem_change_flags(mem, 0, remove_flags);
+}
+
+void prl_mem_kill(prl_mem mem) {
+    // Set nothing is current; implementation will establish a fresh new buffer without transfer
+    mem->loc &= ~(loc_bit_host_is_current | loc_bit_dev_is_current);
+}
+
+void prl_mem_fill(prl_mem mem, char fillchar) {
+    assert(mem);
+
+    if (mem->host_readable || mem->host_writable) {
+        ensure_host_allocated(NOSCOPINST, mem);
+        memset(mem->host_mem, fillchar, mem->size);
+        mem->loc |= loc_bit_host_is_current;
+    }
+
+    if (mem->dev_readable || mem->dev_writable) {
+        //TODO: Use clEnqueueFillBuffer (OpenCL 1.2) with clEnqueueNDRangeKernel fallback; at the moment we just rely on the data being transfered when used.
+        mem->loc &= ~loc_bit_dev_is_current;
+    }
+}
+
+void prl_mem_zero(prl_mem mem) {
+    prl_mem_fill(mem, '\0');
+}
+
+prl_mem prl_get_mem(void *ptr) {
+    if (!ptr)
+        return NULL;
+
+    prl_mem mem = prl_mem_lookup_global_ptr(ptr, 0);
+    if (!mem)
+        return NULL;
+
+    // Should be impossible with size 0 passed to prl_mem_lookup_global_ptr
+    assert(mem->host_mem == ptr);
+    return mem;
 }
