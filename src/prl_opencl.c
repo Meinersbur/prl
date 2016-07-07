@@ -1999,7 +1999,7 @@ static prl_mem prl_mem_lookup_global_ptr(void *host_ptr, size_t size) {
             return mem;
         }
 
-        assert(!(mem_begin <= ptr_end && ptr_end < mem_end));
+        assert(!(mem_begin < ptr_end && ptr_end < mem_end) && "Sought memory region overlaps with other");
 
         mem = mem->mem_next;
     }
