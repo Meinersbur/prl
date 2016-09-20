@@ -22,6 +22,7 @@
 static const char *PRL_TARGET_DEVICE = "PRL_TARGET_DEVICE";
 static const char *PRL_BLOCKING = "PRL_BLOCKING";
 //static const char *PRL_PREFERRED_TRANSFER = "PRL_TRANSFER"; // Select a preferred transfer mode (clEnqueueRead/WriteBuffer, clEnqueueMapBuffer, ...)
+static const char *PRL_COMMAND_QUEUE = "PRL_COMMAND_QUEUE";
 
 static const char *PRL_PREFIX = "PRL_PREFIX";
 
@@ -72,6 +73,7 @@ struct prl_global_config {
     int chosen_device;
 
     bool blocking;
+	bool global_command_queue;
 
     const char *bench_prefix;
     bool cpu_profiling;
@@ -90,6 +92,7 @@ static struct prl_global_config global_config = {
   .chosen_device = 0,
 
   .blocking = false,
+  .global_command_queue = true,
 
   .bench_prefix = "",
   .cpu_profiling = false,
@@ -122,6 +125,7 @@ enum prl_stat_entry {
     stat_cpu_clEnqueueMapBuffer,
     stat_cpu_clFinish,
     stat_cpu_clReleaseCommandQueue,
+	stat_cpu_clReleaseContext,
     stat_cpu_clCreateBuffer,
     stat_cpu_clEnqueueUnmapMemObject,
     stat_cpu_clReleaseEvent,
@@ -258,6 +262,7 @@ static const char *statname[] = {
     [stat_cpu_clEnqueueMapBuffer] = "clEnqueueMapBuffer",
     [stat_cpu_clFinish] = "clFinish",
     [stat_cpu_clReleaseCommandQueue] = "clReleaseCommandQueue",
+	[stat_cpu_clReleaseContext] = "clReleaseContext",
     [stat_cpu_clCreateBuffer] = "clCreateBuffer",
     [stat_cpu_clEnqueueUnmapMemObject] = "clEnqueueUnmapMemObject",
     [stat_cpu_clReleaseEvent] = "clReleaseEvent",
@@ -335,6 +340,7 @@ struct prl_global_state {
     cl_platform_id platform;
     cl_device_id device;
     cl_context context;
+	cl_command_queue queue;
 
     // Profiling
     struct prl_stat global_stat;
@@ -512,6 +518,8 @@ static struct prl_global_state global_state;
 static prl_time_t timestamp_force() {
     struct timespec stamp;
     int err = clock_gettime(CLOCK_MONOTONIC_RAW, &stamp);
+	if (err)
+		err = clock_gettime(CLOCK_MONOTONIC, &stamp);
     assert(!err);
     prl_time_t result = stamp.tv_sec;
     result *= 1000000000L;
@@ -1079,6 +1087,24 @@ static void clReleaseCommandQueue_checked(prl_scop_instance scopinst, cl_command
 
     if (err != CL_SUCCESS)
         opencl_error(err, stat_cpu_clReleaseCommandQueue);
+}
+
+static void clReleaseContext_checked(prl_scop_instance scopinst, cl_context context) {
+	assert(context);
+
+	if (cpu_tracing()) {
+        printf("clReleaseContext(context=%p)", context);
+        fflush(stdout);
+    }
+
+	prl_time_t start = timestamp();
+    cl_int err = clReleaseContext(context);
+    prl_time_t stop = timestamp();
+
+	 trace_result(scopinst, stat_cpu_clReleaseContext, stop - start, err);
+
+	 if (err!=CL_SUCCESS)
+		    opencl_error(err, stat_cpu_clReleaseContext);
 }
 
 static cl_mem clCreateBuffer_checked(prl_scop_instance scopinst, cl_context context, cl_mem_flags flags, size_t size, void *host_ptr) {
@@ -1945,8 +1971,8 @@ static void prl_mem_alloc_map(prl_mem mem, bool host_readable, bool host_writabl
 #endif
     clFinish(clqueue);
 
-    if (!scopinst)
-        clReleaseCommandQueue(clqueue);
+    if (!scopinst && clqueue != scopinst->queue)
+        clReleaseCommandQueue_checked(scopinst, clqueue);
     mem->host_owning = true;
     mem->host_readable = host_readable;
     mem->host_writable = host_writable;
@@ -2237,6 +2263,16 @@ static void env_config(struct prl_global_config *config) {
         config->timing_runs = get_int(str);
         assert(config->timing_runs >= 1);
     }
+
+	if ((str = getenv(PRL_COMMAND_QUEUE))) {
+		if (strcasecmp(str, "global")==0) {
+			config->global_command_queue = true;
+		}
+		else if (strcasecmp(str, "perscopinst")==0) {
+			config->global_command_queue = false;
+		} else
+		assert(!"Unknown PRL_COMMAND_QUEUE option (GLOBAL or PERSCOPINST)");
+	}
 }
 
 static void print_stat_entry(const char *name, const int *count, double duration, const double *relstddev, const char *prefix) {
@@ -2431,7 +2467,6 @@ void prl_release() {
 
     bool dumping = global_state.config.dump_on_release;
     if (dumping) {
-        puts("===============================================================================");
         puts("Shutting down PRL...");
     }
 
@@ -2467,6 +2502,8 @@ void prl_release() {
 #endif
 
     if (dumping) {
+        puts("===============================================================================");
+
         if (global_state.config.cpu_profiling) {
             const int one = 1;
             print_stat_entry("PRL active for", &one, timestamp() - global_state.prl_start, NULL, global_state.config.profiling_prefix);
@@ -2485,7 +2522,18 @@ void prl_release() {
         puts("===============================================================================");
     }
 
+	// TODO: Nicer if these calls are behind the final dumping since tracing will print something here.
+	// Currently the kernel's name string is held by the OpenCL which would free it here.
     global_foreach_kernel(&callback_free_program, &callback_free_kernel, NULL);
+
+	if (global_state.queue) {
+		clReleaseCommandQueue_checked(NOSCOPINST, global_state.queue);
+		global_state.queue = NULL;
+	}
+	if (global_state.context) {
+		clReleaseContext_checked(NOSCOPINST, global_state.context);
+		global_state.context=NULL;
+	}
 
     prl_initialized = 0;
 }
@@ -2660,8 +2708,11 @@ void prl_init() {
         dump_device();
     }
 
+	atexit(prl_release);
     global_state.context = clCreateContext_checked(NOSCOPINST, NULL, 1, &best_device, __ocl_report_error, NULL);
-    atexit(prl_release);
+	if (global_state.config.global_command_queue) {
+		global_state.queue = clCreateCommandQueue_checked(NOSCOPINST, global_state.context, global_state.device, any_gpu_profiling() ? CL_QUEUE_PROFILING_ENABLE : 0);
+	}
 
     if (dumping) {
         fputs("===============================================================================\n", stdout);
@@ -2688,7 +2739,12 @@ prl_scop_instance prl_scop_enter(prl_scop *scopref) {
     memset(scopinst, 0, sizeof *scopinst);
     scopinst->stat.entries[stat_cpu_malloc] += dummystat.stat.entries[stat_cpu_malloc];
 
-    cl_command_queue clqueue = clCreateCommandQueue_checked(scopinst, global_state.context, global_state.device, any_gpu_profiling() ? CL_QUEUE_PROFILING_ENABLE : 0);
+    cl_command_queue clqueue;
+	if (global_state.config.global_command_queue)
+		clqueue = global_state.queue;
+	else
+		clqueue = clCreateCommandQueue_checked(scopinst, global_state.context, global_state.device, any_gpu_profiling() ? CL_QUEUE_PROFILING_ENABLE : 0);
+	assert(clqueue);
 
     scopinst->scop = scop;
     scopinst->queue = clqueue;
@@ -2985,7 +3041,8 @@ void prl_scop_leave(prl_scop_instance scopinst) {
     }
 
     free_events(scopinst);
-    clReleaseCommandQueue_checked(scopinst, scopinst->queue);
+	if (scopinst->queue != global_state.queue)
+		clReleaseCommandQueue_checked(scopinst, scopinst->queue);
     free_checked(scopinst, scopinst->mems);
     free_checked(NOSCOPINST, scopinst);
 
@@ -3620,7 +3677,12 @@ void prl_mem_change_flags(prl_mem mem, enum prl_mem_flags add_flags, enum prl_me
         if (mem->host_readable) {
             if (mem->loc & loc_bit_dev_is_current) {
                 //TODO: Refactor into more general function
-                cl_command_queue queue = clCreateCommandQueue_checked(NOSCOPINST, global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+				cl_command_queue queue ;
+				if (global_state.queue)
+					queue= global_state.queue;
+				else
+					queue = clCreateCommandQueue_checked(NOSCOPINST, global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+				assert(queue);
                 cl_event event;
                 clEnqueueReadBuffer_checked(NOSCOPINST, queue, mem->clmem, CL_BLOCKING_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL);
                 //TODO: push_back_event(NOSCOPINST, event, mem, NULL, false);
