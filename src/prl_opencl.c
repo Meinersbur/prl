@@ -770,6 +770,7 @@ static void trace_result(prl_scop_instance scopinst, enum prl_stat_entry entry, 
     if (global_state.config.cpu_profiling)
         printf(": %fms", duration * 0.000001d);
 
+	// Newline
     puts("");
 }
 
@@ -3032,13 +3033,13 @@ void prl_scop_leave(prl_scop_instance scopinst) {
 		// We are going to free the local buffers; computation needing them might still be running, so we need all computations to finish.
 		require_wait = true;
     }
-
+	   
 	// TODO: More fine-grained waiting (wait for each event)
-	if (require_wait || global_state.config.gpu_profiling)
+	if (require_wait || global_state.config.gpu_profiling || scopinst->queue != global_state.queue) {
+		// TODO: Extract this into function that globally waits and sets buffer status
 		clFinish_checked(scopinst, scopinst->queue);
-    eval_events(scopinst);
+		eval_events(scopinst);
 
-	if (require_wait) {
     for (int i = 0; i < scopinst->mems_size; i += 1) {
         prl_mem gmem = scopinst->mems[i];
         mem_event_finished(scopinst, gmem);
@@ -3696,11 +3697,13 @@ void prl_mem_change_flags(prl_mem mem, enum prl_mem_flags add_flags, enum prl_me
 				else
 					queue = clCreateCommandQueue_checked(NOSCOPINST, global_state.context, global_state.device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
 				assert(queue);
-                cl_event event;
+                // cl_event event;
                 clEnqueueReadBuffer_checked(NOSCOPINST, queue, mem->clmem, CL_BLOCKING_TRUE, 0, mem->size, mem->host_mem, 0, NULL, NULL);
                 //TODO: push_back_event(NOSCOPINST, event, mem, NULL, false);
                 clFinish_checked(NOSCOPINST, queue);
-                clReleaseCommandQueue_checked(NOSCOPINST, queue);
+				mem_event_finished(NOSCOPINST, mem);
+				if (queue != global_state.queue)
+					clReleaseCommandQueue_checked(NOSCOPINST, queue);
             }
         }
 
@@ -3758,6 +3761,13 @@ void prl_mem_fill(prl_mem mem, char fillchar) {
 
     //TODO: Use clEnqueueFillBuffer (OpenCL 1.2) with clEnqueueNDRangeKernel fallback for dev side; at the moment we just rely on the data being transfered when used.
     ensure_host_allocated(NOSCOPINST, mem);
+
+	// Wait if the buffer might still be in use.
+	if (global_state.config.global_command_queue) {
+		clFinish_checked(NOSCOPINST, global_state.queue);
+		mem_event_finished(NOSCOPINST, mem);
+	}
+
     memset(mem->host_mem, fillchar, mem->size);
     mem->loc |= loc_bit_host_is_current;
     mem->loc &= ~loc_bit_dev_is_current;
