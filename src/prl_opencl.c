@@ -1654,6 +1654,7 @@ static bool has_event_completed(prl_scop_instance scopinst, cl_event event) {
 
 static bool has_transfer_completed(prl_scop_instance scopinst, prl_mem mem) {
     assert(mem);
+	assert(need_store_events() && "Events must not been already freed");
     return has_event_completed(scopinst, mem->transferevent);
 }
 
@@ -2989,7 +2990,7 @@ static void mem_event_finished(prl_scop_instance scopinst, prl_mem mem) {
     assert(is_valid_loc(mem));
 
     if (mem->loc & loc_mask_transferring) {
-        assert(!mem->transferevent || has_transfer_completed(scopinst, mem));
+        assert(!need_store_events() || !mem->transferevent || has_transfer_completed(scopinst, mem));
     }
 
     //TODO: buffer transferred from is not yet obsolete; we could still use it for reading.
@@ -3038,6 +3039,8 @@ void prl_scop_leave(prl_scop_instance scopinst) {
 	if (require_wait || global_state.config.gpu_profiling || scopinst->queue != global_state.queue) {
 		// TODO: Extract this into function that globally waits and sets buffer status
 		clFinish_checked(scopinst, scopinst->queue);
+
+		// FIXME: Events are not evaluated if not here.
 		eval_events(scopinst);
 
     for (int i = 0; i < scopinst->mems_size; i += 1) {
