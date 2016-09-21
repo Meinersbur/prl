@@ -2945,14 +2945,15 @@ static void ensure_host_allocated(prl_scop_instance scopinst, prl_mem mem) {
     assert(mem->host_mem);
 }
 
-// Change location of buffer without necessarily preserving its contents
-static void ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
+// Change location of buffer without necessarily preserving its contents.
+// Return true if need to wait until the cpu buffer is available. 
+static bool ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
     assert(scopinst);
     assert(mem);
 
     if (mem->loc == loc_host || mem->loc == loc_transferring_to_host) {
         // Nothing to do
-        return;
+        return false;
     }
 
     ensure_host_allocated(scopinst, mem);
@@ -2972,10 +2973,14 @@ static void ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
         mem->loc = is_blocking() ? loc_host : loc_transferring_to_host;
         mem->transferevent = event;
         push_back_event(scopinst, event, mem, NULL, is_blocking());
+		return true;
     } break;
+
     default:
         assert(false);
     }
+
+	return false;
 }
 
 // Call when we know that a transfer has finished; this function updates its status
@@ -3012,25 +3017,33 @@ void prl_scop_leave(prl_scop_instance scopinst) {
     prl_time_t scop_start = scopinst->scop_start;
 
     prl_mem lmem = scopinst->local_mems;
+	bool require_wait = false;
     while (lmem) {
         assert(lmem->scopinst);
         if (lmem->host_readable || lmem->host_writable)
-            ensure_on_host(scopinst, lmem);
+            require_wait |= ensure_on_host(scopinst, lmem);
         lmem = lmem->mem_next;
     }
     for (int i = 0; i < scopinst->mems_size; i += 1) {
         prl_mem gmem = scopinst->mems[i];
         if (gmem->host_readable || gmem->host_writable)
             ensure_on_host(scopinst, gmem);
+
+		// We are going to free the local buffers; computation needing them might still be running, so we need all computations to finish.
+		require_wait = true;
     }
 
-    clFinish_checked(scopinst, scopinst->queue);
+	// TODO: More fine-grained waiting (wait for each event)
+	if (require_wait || global_state.config.gpu_profiling)
+		clFinish_checked(scopinst, scopinst->queue);
     eval_events(scopinst);
 
+	if (require_wait) {
     for (int i = 0; i < scopinst->mems_size; i += 1) {
         prl_mem gmem = scopinst->mems[i];
         mem_event_finished(scopinst, gmem);
     }
+	}
 
     lmem = scopinst->local_mems;
     while (lmem) {
