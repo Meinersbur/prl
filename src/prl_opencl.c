@@ -3027,7 +3027,7 @@ void prl_scop_leave(prl_scop_instance scopinst) {
         lmem = lmem->mem_next;
 
 		// We are going to free the local buffers; computation needing them might still be running, so we need all computations to finish.
-		require_wait = true;
+		//require_wait = true;
 	}
     for (int i = 0; i < scopinst->mems_size; i += 1) {
         prl_mem gmem = scopinst->mems[i];
@@ -3044,10 +3044,10 @@ void prl_scop_leave(prl_scop_instance scopinst) {
 		// FIXME: Events are not evaluated if not here.
 		eval_events(scopinst);
 
-    for (int i = 0; i < scopinst->mems_size; i += 1) {
-        prl_mem gmem = scopinst->mems[i];
-        mem_event_finished(scopinst, gmem);
-    }
+		for (int i = 0; i < scopinst->mems_size; i += 1) {
+			prl_mem gmem = scopinst->mems[i];
+			mem_event_finished(scopinst, gmem);
+		}
 	}
 
     lmem = scopinst->local_mems;
