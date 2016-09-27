@@ -3023,18 +3023,19 @@ void prl_scop_leave(prl_scop_instance scopinst) {
     while (lmem) {
         assert(lmem->scopinst);
         if (lmem->host_readable || lmem->host_writable)
-            require_wait |= ensure_on_host(scopinst, lmem);
+            ensure_on_host(scopinst, lmem);
         lmem = lmem->mem_next;
-    }
-    for (int i = 0; i < scopinst->mems_size; i += 1) {
-        prl_mem gmem = scopinst->mems[i];
-        if (gmem->host_readable || gmem->host_writable)
-            ensure_on_host(scopinst, gmem);
 
 		// We are going to free the local buffers; computation needing them might still be running, so we need all computations to finish.
 		require_wait = true;
+	}
+    for (int i = 0; i < scopinst->mems_size; i += 1) {
+        prl_mem gmem = scopinst->mems[i];
+        if (gmem->host_readable || gmem->host_writable)
+            require_wait |= ensure_on_host(scopinst, gmem);
+
     }
-	   
+
 	// TODO: More fine-grained waiting (wait for each event)
 	if (require_wait || global_state.config.gpu_profiling || scopinst->queue != global_state.queue) {
 		// TODO: Extract this into function that globally waits and sets buffer status
