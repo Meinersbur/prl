@@ -19,6 +19,19 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef __MACH__
+#include <mach/mach_time.h>
+#endif
+
+#ifdef __APPLE__
+#include <AvailabilityMacros.h>
+#ifdef MAC_OS_X_VERSION_10_12
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_12
+#define MACH_HAS_CLOCK_GETTIME
+#endif //MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_12
+#endif //MAC_OS_X_VERSION_10_12
+#endif // __APPLE__
+
 static const char *PRL_TARGET_DEVICE = "PRL_TARGET_DEVICE";
 static const char *PRL_BLOCKING = "PRL_BLOCKING";
 //static const char *PRL_PREFERRED_TRANSFER = "PRL_TRANSFER"; // Select a preferred transfer mode (clEnqueueRead/WriteBuffer, clEnqueueMapBuffer, ...)
@@ -517,10 +530,23 @@ static struct prl_global_state global_state;
 
 static prl_time_t timestamp_force() {
     struct timespec stamp;
+#if defined(__MACH__) && !defined(MACH_HAS_CLOCK_GETTIME)
+    static double timebase = 0.0;
+    if (timebase == 0.0) {
+      mach_timebase_info_data_t tb = { 0 };
+      mach_timebase_info(&tb);
+      timebase = tb.numer;
+      timebase /= tb.denom;
+    }
+    uint64_t atime = mach_absolute_time();
+    stamp.tv_sec = atime / 1000000000L;
+    stamp.tv_nsec = atime - stamp.tv_sec * 1000000000L;
+#else
     int err = clock_gettime(CLOCK_MONOTONIC_RAW, &stamp);
-	if (err)
-		err = clock_gettime(CLOCK_MONOTONIC, &stamp);
+        if (err)
+                err = clock_gettime(CLOCK_MONOTONIC, &stamp);
     assert(!err);
+#endif
     prl_time_t result = stamp.tv_sec;
     result *= 1000000000L;
     result += stamp.tv_nsec;
@@ -666,10 +692,16 @@ static const char *opencl_getErrorString(cl_int error) {
 #endif
 
     // extensions
+#ifdef cl_khr_gl_sharing
     case CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR:
         return "CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR";
+#endif
+
+#ifdef cl_khr_icd
     case CL_PLATFORM_NOT_FOUND_KHR:
         return "CL_PLATFORM_NOT_FOUND_KHR";
+#endif
+
     case CL_INT_MIN:
         return "CL_INT_MIN (err not set)";
     default:
@@ -768,7 +800,7 @@ static void trace_result(prl_scop_instance scopinst, enum prl_stat_entry entry, 
     }
 
     if (global_state.config.cpu_profiling)
-        printf(": %fms", duration * 0.000001d);
+        printf(": %fms", duration * 0.000001);
 
 	// Newline
     puts("");
@@ -1626,7 +1658,7 @@ static void dump_finished_transfer_event(cl_command_type cmdty, prl_mem mem, prl
 }
 
 static void report_trace(const char *cmdstr, prl_time_t duration) {
-    printf("%s: %fms\n", cmdstr, duration * 0.000001d);
+    printf("%s: %fms\n", cmdstr, duration * 0.000001);
 }
 
 static void dump_finished_event(struct prl_pending_event *pendev, cl_command_type cmdty, prl_time_t duration) {
@@ -2036,48 +2068,48 @@ static prl_mem prl_mem_lookup_global_ptr(void *host_ptr, size_t size) {
 }
 
 static cl_device_type devtypes[] = {
-    [PRL_TARGET_DEVICE_FIRST] CL_DEVICE_TYPE_DEFAULT,
-    [PRL_TARGET_DEVICE_FIXED] CL_DEVICE_TYPE_ALL,
+    [PRL_TARGET_DEVICE_FIRST] = CL_DEVICE_TYPE_DEFAULT,
+    [PRL_TARGET_DEVICE_FIXED] = CL_DEVICE_TYPE_ALL,
 
-    [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
-    [PRL_TARGET_DEVICE_ACC_ONLY] CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_ONLY] = CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_ONLY] = CL_DEVICE_TYPE_CPU,
+    [PRL_TARGET_DEVICE_ACC_ONLY] = CL_DEVICE_TYPE_ACCELERATOR,
 
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU] CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC] CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] = CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] = CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
 
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
 };
 
 // { cpu, gpu, acc, other }
 // 0 means never take
 static unsigned char devtypes_rank[][4] = {
     [PRL_TARGET_DEVICE_CPU_ONLY] = {4, 0, 0, 0},
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] { 4, 3, 0, 0 },
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC] { 4, 0, 3, 0 },
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] { 4, 3, 2, 0 },
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] { 4, 2, 3, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] = { 4, 3, 0, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] = { 4, 0, 3, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] = { 4, 3, 2, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] = { 4, 2, 3, 0 },
 
-    [PRL_TARGET_DEVICE_GPU_ONLY] { 0, 4, 0, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] { 3, 4, 0, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC] { 0, 4, 3, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] { 3, 4, 2, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] { 2, 4, 3, 0 },
+    [PRL_TARGET_DEVICE_GPU_ONLY] = { 0, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] = { 3, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] = { 0, 4, 3, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] = { 3, 4, 2, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] = { 2, 4, 3, 0 },
 
-    [PRL_TARGET_DEVICE_ACC_ONLY] { 0, 0, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU] { 3, 0, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU] { 0, 3, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] { 3, 2, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] { 2, 3, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_ONLY] = { 0, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] = { 3, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] = { 0, 3, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] = { 3, 2, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] = { 2, 3, 4, 0 },
 };
 
 #if 0
@@ -2137,25 +2169,25 @@ static int get_int(const char *str) {
 }
 
 static const char *targetconfstr[] = {
-    [PRL_TARGET_DEVICE_FIRST] "first",
+    [PRL_TARGET_DEVICE_FIRST] = "first",
 
-    [PRL_TARGET_DEVICE_GPU_ONLY] "gpu",
-    [PRL_TARGET_DEVICE_CPU_ONLY] "cpu",
-    [PRL_TARGET_DEVICE_ACC_ONLY] "acc",
+    [PRL_TARGET_DEVICE_GPU_ONLY] = "gpu",
+    [PRL_TARGET_DEVICE_CPU_ONLY] = "cpu",
+    [PRL_TARGET_DEVICE_ACC_ONLY] = "acc",
 
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] "gpu_cpu",
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] "cpu_gpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU] "acc_cpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU] "acc_gpu",
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC] "gpu_acc",
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC] "cpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] = "gpu_cpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] = "cpu_gpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] = "acc_cpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] = "acc_gpu",
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] = "gpu_acc",
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] = "cpu_acc",
 
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] "cpu_gpu_acc",
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] "gpu_cpu_acc",
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] "gpu_acc_cpu",
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] "cpu_acc_gpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] "acc_gpu_cpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] "acc_cpu_gpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] = "cpu_gpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] = "gpu_cpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] = "gpu_acc_cpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] = "cpu_acc_gpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] = "acc_gpu_cpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] = "acc_cpu_gpu",
 };
 
 #define LENGTHOF(ARR) (sizeof(ARR) / sizeof(ARR[0]))
@@ -2288,16 +2320,16 @@ static void print_stat_entry(const char *name, const int *count, double duration
     if (relstddev) {
         // Report relative standard error
         if (*relstddev != 0)
-            printf("%s%-25s:%8.3fms (\u00B1%5.1f%%)\n", prefix, name, duration * 0.000001d, 100 * *relstddev);
+            printf("%s%-25s:%8.3fms (\u00B1%5.1f%%)\n", prefix, name, duration * 0.000001, 100 * *relstddev);
         else
-            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001d);
+            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001);
     } else {
         // Report times
         if (count) {
             assert(*count > 0);
-            printf("%s%-25s:%8.3fms (%3d time%1s)\n", prefix, name, duration * 0.000001d, *count, (*count == 1) ? "" : "s");
+            printf("%s%-25s:%8.3fms (%3d time%1s)\n", prefix, name, duration * 0.000001, *count, (*count == 1) ? "" : "s");
         } else
-            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001d);
+            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001);
     }
 }
 
