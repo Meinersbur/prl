@@ -800,7 +800,7 @@ static void trace_result(prl_scop_instance scopinst, enum prl_stat_entry entry, 
     }
 
     if (global_state.config.cpu_profiling)
-        printf(": %fms", duration * 0.000001d);
+        printf(": %fms", duration * 0.000001);
 
 	// Newline
     puts("");
@@ -1658,7 +1658,7 @@ static void dump_finished_transfer_event(cl_command_type cmdty, prl_mem mem, prl
 }
 
 static void report_trace(const char *cmdstr, prl_time_t duration) {
-    printf("%s: %fms\n", cmdstr, duration * 0.000001d);
+    printf("%s: %fms\n", cmdstr, duration * 0.000001);
 }
 
 static void dump_finished_event(struct prl_pending_event *pendev, cl_command_type cmdty, prl_time_t duration) {
@@ -2320,16 +2320,16 @@ static void print_stat_entry(const char *name, const int *count, double duration
     if (relstddev) {
         // Report relative standard error
         if (*relstddev != 0)
-            printf("%s%-25s:%8.3fms (\u00B1%5.1f%%)\n", prefix, name, duration * 0.000001d, 100 * *relstddev);
+            printf("%s%-25s:%8.3fms (\u00B1%5.1f%%)\n", prefix, name, duration * 0.000001, 100 * *relstddev);
         else
-            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001d);
+            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001);
     } else {
         // Report times
         if (count) {
             assert(*count > 0);
-            printf("%s%-25s:%8.3fms (%3d time%1s)\n", prefix, name, duration * 0.000001d, *count, (*count == 1) ? "" : "s");
+            printf("%s%-25s:%8.3fms (%3d time%1s)\n", prefix, name, duration * 0.000001, *count, (*count == 1) ? "" : "s");
         } else
-            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001d);
+            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001);
     }
 }
 
