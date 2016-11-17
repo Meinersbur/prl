@@ -19,6 +19,19 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef __MACH__
+#include <mach/mach_time.h>
+#endif
+
+#ifdef __APPLE__
+#include <AvailabilityMacros.h>
+#ifdef MAC_OS_X_VERSION_10_12
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_12
+#define MACH_HAS_CLOCK_GETTIME
+#endif //MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_12
+#endif //MAC_OS_X_VERSION_10_12
+#endif // __APPLE__
+
 static const char *PRL_TARGET_DEVICE = "PRL_TARGET_DEVICE";
 static const char *PRL_BLOCKING = "PRL_BLOCKING";
 //static const char *PRL_PREFERRED_TRANSFER = "PRL_TRANSFER"; // Select a preferred transfer mode (clEnqueueRead/WriteBuffer, clEnqueueMapBuffer, ...)
@@ -517,10 +530,23 @@ static struct prl_global_state global_state;
 
 static prl_time_t timestamp_force() {
     struct timespec stamp;
+#if defined(__MACH__) && !defined(MACH_HAS_CLOCK_GETTIME)
+    static double timebase = 0.0;
+    if (timebase == 0.0) {
+      mach_timebase_info_data_t tb = { 0 };
+      mach_timebase_info(&tb);
+      timebase = tb.numer;
+      timebase /= tb.denom;
+    }
+    uint64_t atime = mach_absolute_time();
+    stamp.tv_sec = atime / 1000000000L;
+    stamp.tv_nsec = atime - stamp.tv_sec * 1000000000L;
+#else
     int err = clock_gettime(CLOCK_MONOTONIC_RAW, &stamp);
-	if (err)
-		err = clock_gettime(CLOCK_MONOTONIC, &stamp);
+        if (err)
+                err = clock_gettime(CLOCK_MONOTONIC, &stamp);
     assert(!err);
+#endif
     prl_time_t result = stamp.tv_sec;
     result *= 1000000000L;
     result += stamp.tv_nsec;
@@ -666,10 +692,16 @@ static const char *opencl_getErrorString(cl_int error) {
 #endif
 
     // extensions
+#ifdef cl_khr_gl_sharing
     case CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR:
         return "CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR";
+#endif
+
+#ifdef cl_khr_icd
     case CL_PLATFORM_NOT_FOUND_KHR:
         return "CL_PLATFORM_NOT_FOUND_KHR";
+#endif
+
     case CL_INT_MIN:
         return "CL_INT_MIN (err not set)";
     default:
