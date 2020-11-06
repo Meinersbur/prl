@@ -19,6 +19,15 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef WIN32
+#include <Windows.h>
+#endif
+
+#ifdef _MSC_VER
+#define strncasecmp _strnicmp
+#define strcasecmp _stricmp
+#endif
+
 static const char *PRL_TARGET_DEVICE = "PRL_TARGET_DEVICE";
 static const char *PRL_BLOCKING = "PRL_BLOCKING";
 //static const char *PRL_PREFERRED_TRANSFER = "PRL_TRANSFER"; // Select a preferred transfer mode (clEnqueueRead/WriteBuffer, clEnqueueMapBuffer, ...)
@@ -516,15 +525,19 @@ static bool prl_initialized = false;
 static struct prl_global_state global_state;
 
 static prl_time_t timestamp_force() {
-    struct timespec stamp;
-    int err = clock_gettime(CLOCK_MONOTONIC_RAW, &stamp);
+#ifdef WIN32
+	return GetTickCount64() * 1000;
+#else
+	struct timespec stamp;
+	int err = clock_gettime(CLOCK_MONOTONIC_RAW, &stamp);
 	if (err)
 		err = clock_gettime(CLOCK_MONOTONIC, &stamp);
-    assert(!err);
-    prl_time_t result = stamp.tv_sec;
-    result *= 1000000000L;
-    result += stamp.tv_nsec;
-    return result;
+	assert(!err);
+	prl_time_t result = stamp.tv_sec;
+	result *= 1000000000L;
+	result += stamp.tv_nsec;
+	return result;
+#endif
 }
 
 static prl_time_t timestamp() {
@@ -768,7 +781,7 @@ static void trace_result(prl_scop_instance scopinst, enum prl_stat_entry entry, 
     }
 
     if (global_state.config.cpu_profiling)
-        printf(": %fms", duration * 0.000001d);
+        printf(": %fms", duration * 0.000001);
 
 	// Newline
     puts("");
@@ -1523,7 +1536,7 @@ static void push_back_mem(prl_scop_instance scopinst, prl_mem mem) {
     scopinst->mems_size += 1;
 }
 
-static void stat_compute_medians(double medians[static const restrict STAT_ENTRIES], double relstddevs[static const restrict STAT_ENTRIES], size_t n, struct prl_stat data[static const restrict n]) {
+static void stat_compute_medians(double medians[STAT_ENTRIES], double relstddevs[STAT_ENTRIES], size_t n, struct prl_stat *data) {
     prl_time_t *sorted = malloc_checked(NOSCOPINST, n * sizeof *sorted);
     for (int j = 0; j < STAT_ENTRIES; j += 1) {
         if (n == 0) {
@@ -1626,7 +1639,7 @@ static void dump_finished_transfer_event(cl_command_type cmdty, prl_mem mem, prl
 }
 
 static void report_trace(const char *cmdstr, prl_time_t duration) {
-    printf("%s: %fms\n", cmdstr, duration * 0.000001d);
+    printf("%s: %fms\n", cmdstr, duration * 0.000001);
 }
 
 static void dump_finished_event(struct prl_pending_event *pendev, cl_command_type cmdty, prl_time_t duration) {
@@ -2036,48 +2049,48 @@ static prl_mem prl_mem_lookup_global_ptr(void *host_ptr, size_t size) {
 }
 
 static cl_device_type devtypes[] = {
-    [PRL_TARGET_DEVICE_FIRST] CL_DEVICE_TYPE_DEFAULT,
-    [PRL_TARGET_DEVICE_FIXED] CL_DEVICE_TYPE_ALL,
+    [PRL_TARGET_DEVICE_FIRST] = CL_DEVICE_TYPE_DEFAULT,
+    [PRL_TARGET_DEVICE_FIXED] = CL_DEVICE_TYPE_ALL,
 
-    [PRL_TARGET_DEVICE_GPU_ONLY] CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_CPU_ONLY] CL_DEVICE_TYPE_CPU,
-    [PRL_TARGET_DEVICE_ACC_ONLY] CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_ONLY] = CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_ONLY] = CL_DEVICE_TYPE_CPU,
+    [PRL_TARGET_DEVICE_ACC_ONLY] = CL_DEVICE_TYPE_ACCELERATOR,
 
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU] CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC] CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU,
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] = CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] = CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_ACCELERATOR,
 
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] = CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
 };
 
 // { cpu, gpu, acc, other }
 // 0 means never take
 static unsigned char devtypes_rank[][4] = {
     [PRL_TARGET_DEVICE_CPU_ONLY] = {4, 0, 0, 0},
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] { 4, 3, 0, 0 },
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC] { 4, 0, 3, 0 },
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] { 4, 3, 2, 0 },
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] { 4, 2, 3, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] = { 4, 3, 0, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] = { 4, 0, 3, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] = { 4, 3, 2, 0 },
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] = { 4, 2, 3, 0 },
 
-    [PRL_TARGET_DEVICE_GPU_ONLY] { 0, 4, 0, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] { 3, 4, 0, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC] { 0, 4, 3, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] { 3, 4, 2, 0 },
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] { 2, 4, 3, 0 },
+    [PRL_TARGET_DEVICE_GPU_ONLY] = { 0, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] = { 3, 4, 0, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] = { 0, 4, 3, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] = { 3, 4, 2, 0 },
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] = { 2, 4, 3, 0 },
 
-    [PRL_TARGET_DEVICE_ACC_ONLY] { 0, 0, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU] { 3, 0, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU] { 0, 3, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] { 3, 2, 4, 0 },
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] { 2, 3, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_ONLY] = { 0, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] = { 3, 0, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] = { 0, 3, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] = { 3, 2, 4, 0 },
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] = { 2, 3, 4, 0 },
 };
 
 #if 0
@@ -2137,25 +2150,25 @@ static int get_int(const char *str) {
 }
 
 static const char *targetconfstr[] = {
-    [PRL_TARGET_DEVICE_FIRST] "first",
+    [PRL_TARGET_DEVICE_FIRST] = "first",
 
-    [PRL_TARGET_DEVICE_GPU_ONLY] "gpu",
-    [PRL_TARGET_DEVICE_CPU_ONLY] "cpu",
-    [PRL_TARGET_DEVICE_ACC_ONLY] "acc",
+    [PRL_TARGET_DEVICE_GPU_ONLY] = "gpu",
+    [PRL_TARGET_DEVICE_CPU_ONLY] = "cpu",
+    [PRL_TARGET_DEVICE_ACC_ONLY] = "acc",
 
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU] "gpu_cpu",
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU] "cpu_gpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU] "acc_cpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU] "acc_gpu",
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC] "gpu_acc",
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC] "cpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU] = "gpu_cpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU] = "cpu_gpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU] = "acc_cpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU] = "acc_gpu",
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC] = "gpu_acc",
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC] = "cpu_acc",
 
-    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] "cpu_gpu_acc",
-    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] "gpu_cpu_acc",
-    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] "gpu_acc_cpu",
-    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] "cpu_acc_gpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] "acc_gpu_cpu",
-    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] "acc_cpu_gpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_GPU_THEN_ACC] = "cpu_gpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_CPU_THEN_ACC] = "gpu_cpu_acc",
+    [PRL_TARGET_DEVICE_GPU_THEN_ACC_THEN_CPU] = "gpu_acc_cpu",
+    [PRL_TARGET_DEVICE_CPU_THEN_ACC_THEN_GPU] = "cpu_acc_gpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_GPU_THEN_CPU] = "acc_gpu_cpu",
+    [PRL_TARGET_DEVICE_ACC_THEN_CPU_THEN_GPU] = "acc_cpu_gpu",
 };
 
 #define LENGTHOF(ARR) (sizeof(ARR) / sizeof(ARR[0]))
@@ -2288,20 +2301,20 @@ static void print_stat_entry(const char *name, const int *count, double duration
     if (relstddev) {
         // Report relative standard error
         if (*relstddev != 0)
-            printf("%s%-25s:%8.3fms (\u00B1%5.1f%%)\n", prefix, name, duration * 0.000001d, 100 * *relstddev);
+            printf("%s%-25s:%8.3fms (\u00B1%5.1f%%)\n", prefix, name, duration * 0.000001, 100 * *relstddev);
         else
-            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001d);
+            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001);
     } else {
         // Report times
         if (count) {
             assert(*count > 0);
-            printf("%s%-25s:%8.3fms (%3d time%1s)\n", prefix, name, duration * 0.000001d, *count, (*count == 1) ? "" : "s");
+            printf("%s%-25s:%8.3fms (%3d time%1s)\n", prefix, name, duration * 0.000001, *count, (*count == 1) ? "" : "s");
         } else
-            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001d);
+            printf("%s%-25s:%8.3fms\n", prefix, name, duration * 0.000001);
     }
 }
 
-static void print_stat(double durations[static const restrict STAT_ENTRIES], int counts[const restrict STAT_ENTRIES], double relstddevs[const restrict STAT_ENTRIES], const char *prefix) {
+static void print_stat(double durations[STAT_ENTRIES], int counts[STAT_ENTRIES], double relstddevs[STAT_ENTRIES], const char *prefix) {
     assert(durations);
 
     //puts("===============================================================================");
@@ -2948,7 +2961,7 @@ static void ensure_host_allocated(prl_scop_instance scopinst, prl_mem mem) {
 }
 
 // Change location of buffer without necessarily preserving its contents.
-// Return true if need to wait until the cpu buffer is available. 
+// Return true if need to wait until the cpu buffer is available.
 static bool ensure_on_host(prl_scop_instance scopinst, prl_mem mem) {
     assert(scopinst);
     assert(mem);
@@ -3430,7 +3443,7 @@ void prl_scop_device_to_host(prl_scop_instance scopinst, prl_mem mem) {
     assert(is_valid_loc(mem));
 }
 
-void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int work_dims, size_t work_size[static const restrict work_dims], int block_dims, size_t block_size[static const restrict block_dims], size_t n_args, struct prl_kernel_call_arg args[static const restrict n_args]) {
+void prl_scop_call(prl_scop_instance scopinst, prl_kernel kernel, int work_dims, size_t *work_size, int block_dims, size_t *block_size, size_t n_args, struct prl_kernel_call_arg *args) {
     assert(scopinst);
     assert(kernel);
     assert(work_dims > 0);
